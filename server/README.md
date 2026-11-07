@@ -121,7 +121,7 @@ const results = await pipeline.run({ url: 'https://example.com' });
 
 `Scheduler(dag, state)` is created separately for each run. `getReadyTasks()` returns only pending tasks whose dependencies have all succeeded, using the DAG's dependency lookups. It also marks tasks blocked by failed prerequisites, including transitive dependents.
 
-Registration order does not matter. Dependencies refer to task names; the runner calls `validate()` when constructed, before any task executes. Each task runs once per pipeline run, after all its dependencies succeed. Independent asynchronous tasks run concurrently in the same process. A newly ready task starts without waiting for unrelated running tasks. This does not provide CPU parallelism or a concurrency limit.
+Registration order does not matter. Dependencies refer to task names; the runner calls `validate()` when constructed, before any task executes. Each task is scheduled once per pipeline run, after all its dependencies succeed; its handler can be attempted multiple times if retries are configured. Independent asynchronous tasks run concurrently in the same process. A newly ready task starts without waiting for unrelated running tasks. This does not provide CPU parallelism or a concurrency limit.
 
 Each run creates its own `StateManager`, `Scheduler`, and `ExecutionContext(input, state)`, so the same runner can handle concurrent requests. Execution uses `state.allTasksFinished()` to detect completion, including failed and blocked tasks. When nothing new is ready, the runner awaits the next running task rather than polling. Handlers receive `context.input`, `context.state`, and `context.results`; a successful return value is stored under the task's name, including `undefined`. Declare every dependency whose output you read. Prefer returning an output rather than mutating other tasks' entries, since independent handlers share the context. Inputs and returned values are not deep-cloned.
 
@@ -131,7 +131,43 @@ States begin at `PENDING` and change to `RUNNING`, then `SUCCESS` or `FAILED`. W
 
 Task handlers can inspect per-run states, stored outputs, and original errors through `context.state.getStates()`, `getResult(name)`, and `getErrors()`.
 
-`Executor.execute(task, context, state)` marks the task running, awaits its handler, and records its output or failure. On failure it rethrows the original error after updating state. The runner catches these errors while draining independent work, then rejects the run. There are no retries, persistence, or rollback of context mutations. The Express example's response shape is unchanged; pipeline errors propagate to Express.
+`Executor.execute(task, context, state)` marks the task running, awaits its handler (including any configured retries), and records its output or terminal failure. On terminal failure it rethrows the error after updating state. The runner catches these errors while draining independent work, then rejects the run. There is no persistence or rollback of context mutations. The Express example's response shape is unchanged; pipeline errors propagate to Express.
+
+## Automatic retries
+
+Retries are opt-in per task. Existing tasks without a retry policy still get one attempt.
+
+```ts
+new Task({
+  name: 'lookup',
+  retry: {
+    maxRetries: 2,       // Two retries after the initial attempt: three attempts total
+    initialDelayMs: 100,
+    maxDelayMs: 1_000,
+    shouldRetry: (error) => error instanceof Error && error.message === 'temporary failure',
+  },
+  run: async (context) => {
+    // Replace this body with your operation; throw on failure to trigger retries.
+    return context.input;
+  },
+});
+```
+
+- `maxRetries` is required when configuring retries and must be a non-negative safe integer.
+- `initialDelayMs` defaults to `100`; `maxDelayMs` defaults to `30000`. Delays double after each retry, capped at `maxDelayMs`, without jitter. For example, initial `100` and cap `250` produce waits of `100`, `200`, `250`, `250`, … milliseconds.
+- Both delays must be integers from `0` through `2147483647`, and the initial delay must not exceed the cap. A zero initial delay schedules retries on subsequent timer turns without increasing the delay.
+- `shouldRetry` is an optional synchronous predicate. Without it, all handler errors are eligible for retry. Returning `false` stops retries immediately. If the predicate throws, its error becomes the terminal failure.
+- A task stays `RUNNING` throughout retry attempts and backoff. Its dependents stay pending, and unrelated branches can continue. Only a successful attempt publishes a returned output; only terminal failure records an error and blocks descendants. When attempts are exhausted, the last handler error is retained and rethrown.
+- Attempts use the same execution context and original input. Retry counts and delays are local to each execution, including concurrent runs on a shared runner. Retry configuration is copied and frozen when constructing a task.
+- Retries do not roll back shared-context mutations or external side effects. Return outputs rather than mutating shared results during attempts, and use idempotency protection for operations that write externally. Retries do not provide task timeouts or cancellation.
+
+Run the retry tests from `server/`:
+
+```sh
+node --import tsx --test test/retry.test.ts
+```
+
+These tests cover recovery, exhaustion, retry filtering, capped backoff, configuration validation, dependency blocking, independent work, and isolation between runs.
 
 
 ```sh
