@@ -2,6 +2,8 @@
 
 An independent TypeScript/Node.js application-security scanner. It does not classify phishing, consult reputation databases, validate certificate lifecycles, or compute unified risk. Normal HTTPS certificate verification is retained solely to secure outbound requests.
 
+Module 1 is now integrated as an additional independent `urlAnalysis` root in the application DAG; see [URL Analyzer](url-analysis.md). It shares the extracted IP/redaction helpers, while Module 4 retains its authorization, stricter URL policy, checks and transport. The aggregation task also waits for URL analysis. Module 4 does not trust its report as a fetch target or grant.
+
 ## Installation
 
 From `server/`, use Node.js >=22 and pnpm:

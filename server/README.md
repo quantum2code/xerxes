@@ -1,6 +1,6 @@
 # Xerxes server
 
-Express + TypeScript with a DAG execution engine and Module 4 web security scanner. Other analysis modules remain explicit mocks. See [Web Security Scanner documentation](docs/web-security.md) for authorization, configuration, ZAP setup, API examples, output schema, tests, and limitations.
+Express + TypeScript with a DAG execution engine, [Module 1 URL analyzer](docs/url-analysis.md) (URL features, DNS and safe HTTP metadata), and [Module 4 web security scanner](docs/web-security.md). Other analysis modules remain explicit mocks. Both modules provide typed, redacted results rather than a final phishing verdict.
 
 ```sh
 pnpm install
@@ -12,6 +12,7 @@ Defaults to port `3000` (override with `PORT`).
 - `GET /health`
 - `POST /api/analyze` — returns task outputs, including independent `webSecurityScan` and separate `securityAssessment` aggregation.
 - `POST /api/web-security/scan` — standalone structured scanner result. Scans require server-provisioned authorization grants by default; unauthorized submissions return blocked without fetching the target.
+- `POST /api/url-analysis` — standalone URL parsing/features, DNS records and SSRF-safe HTTP metadata. Requests can contact the submitted public website; use authorized targets only. See its [configuration and output schema](docs/url-analysis.md).
 
 ```sh
 curl -X POST http://localhost:3000/api/analyze \
@@ -36,14 +37,16 @@ src/
 
   pipelines/                 Business-specific pipeline definitions
     mock-pipeline.ts         Legacy four-task mock DAG, retained for compatibility
-    security-pipeline.ts     Application DAG with independent web security scanner
+    security-pipeline.ts     Application DAG with independent URL/security analysis
+  modules/url-analysis/      URL parsing, features, DNS and pinned Undici metadata
   modules/web-security/      Native checks, safe transport, optional isolated ZAP
+  shared/                    Shared IP policy, redaction and concurrency limits
 test/                        DAG engine and security pipeline tests
 ```
 
 ## Legacy mock pipeline
 
-The following describes the retained `pipelines/mock-pipeline.ts` factory, not the application's five-task scanner DAG. The legacy factory returns four mock tasks and does not execute them.
+The following describes the retained `pipelines/mock-pipeline.ts` factory, not the application's six-task analysis DAG. The legacy factory returns four mock tasks and does not execute them.
 
 ```mermaid
 flowchart TD
@@ -74,10 +77,10 @@ For a no-network HTTP smoke test, start `pnpm dev`, then submit without a grant:
 ```sh
 curl --fail-with-body -sS http://localhost:3000/api/analyze \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com"}'
+  -d '{"url":"http://127.0.0.1"}'
 ```
 
-Legacy mock-factory output (the application response additionally contains a blocked scanner result and `securityAssessment.webSecurity` when no grant is provided):
+Legacy mock-factory output (the application response additionally contains blocked URL/scanner results and their separate `securityAssessment` summaries for the unsafe smoke-test target):
 
 ```json
 {
