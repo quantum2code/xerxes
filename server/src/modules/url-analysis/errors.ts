@@ -7,6 +7,7 @@ export class AnalysisFailure extends Error {
 export function structuredError(stage: AnalysisError['stage'], error: unknown, signal?: AbortSignal): AnalysisError {
   if (error instanceof PolicyError) return { stage, code: 'NETWORK_BLOCKED', message: 'Destination prohibited by network policy', retryable: false };
   if (error instanceof AnalysisFailure) return { stage, code: error.code, message: error.message, retryable: false };
+  if (error instanceof Error && error.name === 'TimeoutError') return { stage, code: 'TIMEOUT', message: 'Operation deadline exceeded', retryable: true };
   if (signal?.aborted) {
     const timeout = signal.reason instanceof Error && signal.reason.name === 'TimeoutError';
     return { stage, code: timeout ? 'TIMEOUT' : 'CANCELLED', message: timeout ? 'Operation deadline exceeded' : 'Operation cancelled', retryable: timeout };
