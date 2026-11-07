@@ -5,6 +5,7 @@ import { createApp } from '../src/app.js';
 import { buildSecurityPipeline } from '../src/pipelines/security-pipeline.js';
 import { PipelineRunner } from '../src/pipeline/pipeline-runner.js';
 import { WebSecurityScanner, loadConfig } from '../src/modules/web-security/index.js';
+import { UrlAnalyzer } from '../src/modules/url-analysis/index.js';
 
 test('production DAG adds independent scanner and separate backward-compatible assessment', async () => {
   const scanner = new WebSecurityScanner(loadConfig({}));
@@ -25,7 +26,9 @@ test('real scanner failure remains structured and does not block other pipeline 
   assert.ok(result.certificateValidation);
 });
 test('HTTP endpoints expose standalone/pipeline results and sanitize malformed requests', async (t) => {
-  const server = createApp({ scanner: new WebSecurityScanner(loadConfig({})) }).listen(0, '127.0.0.1');
+  const server = createApp({ scanner: new WebSecurityScanner(loadConfig({})), urlAnalyzer: new UrlAnalyzer(undefined, {
+    query: async () => [], transport: async () => ({ statusCode: 200, headers: { 'content-type': 'text/html' } }),
+  }) }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;

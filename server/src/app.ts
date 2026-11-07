@@ -1,13 +1,15 @@
 import express from 'express';
 import { PipelineRunner } from './pipeline/pipeline-runner.js';
-import { buildSecurityPipeline, type ScannerTask } from './pipelines/security-pipeline.js';
+import { buildSecurityPipeline, type ScannerTask, type UrlAnalysisTask } from './pipelines/security-pipeline.js';
 import { loadConfig, WebSecurityScanner } from './modules/web-security/index.js';
 import { createZapBackend } from './modules/web-security/integrations/zap.js';
+import { UrlAnalyzer } from './modules/url-analysis/index.js';
 
-export function createApp(options: { scanner?: ScannerTask } = {}) {
+export function createApp(options: { scanner?: ScannerTask; urlAnalyzer?: UrlAnalysisTask } = {}) {
   const config = loadConfig();
   const scanner = options.scanner ?? new WebSecurityScanner(config, { zap: createZapBackend(config) });
-  const dag = buildSecurityPipeline(scanner);
+  const urlAnalyzer = options.urlAnalyzer ?? new UrlAnalyzer();
+  const dag = buildSecurityPipeline(scanner, urlAnalyzer);
   const runner = new PipelineRunner(dag);
   const app = express();
   app.disable('x-powered-by');
@@ -25,6 +27,16 @@ export function createApp(options: { scanner?: ScannerTask } = {}) {
   app.post('/api/web-security/scan', async (req, res) => {
     const result = await scanner.scan(req.body);
     res.status(result.status === 'blocked' ? 403 : result.status === 'failed' ? 502 : 200).json(result);
+  });
+
+  app.post('/api/url-analysis', async (req, res) => {
+    const cancellation = new AbortController();
+    const disconnected = () => { if (!res.writableEnded) cancellation.abort(); };
+    res.once('close', disconnected);
+    try {
+      const result = await urlAnalyzer.analyze(req.body, cancellation.signal);
+      res.status(result.status === 'blocked' ? 403 : result.url === null ? 400 : result.status === 'failed' ? 502 : 200).json(result);
+    } finally { res.removeListener('close', disconnected); }
   });
 
   const errors: express.ErrorRequestHandler = (error: unknown, _req, res, _next) => {
