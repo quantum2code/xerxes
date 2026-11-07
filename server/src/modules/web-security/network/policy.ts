@@ -1,10 +1,8 @@
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import { timingSafeEqual } from 'node:crypto';
-import ipaddr from 'ipaddr.js';
 import type { ScannerConfig, ScanRequest } from '../types.js';
+import { PolicyError } from '../../../shared/network/policy.js';
+export { PolicyError, publicAddress, resolvePublic, systemResolver, type Resolver } from '../../../shared/network/policy.js';
 
-export class PolicyError extends Error {}
 export function parseTarget(raw: unknown): URL {
   if (typeof raw !== 'string' || raw.length > 4096 || /[\u0000-\u0020\u007f\\]/.test(raw)) throw new PolicyError('Invalid target URL');
   let url: URL;
@@ -16,22 +14,6 @@ export function parseTarget(raw: unknown): URL {
     throw new PolicyError('Prohibited hostname');
   }
   return url;
-}
-export function publicAddress(address: string): boolean {
-  try {
-    if (address === '168.63.129.16') return false; // Azure platform virtual IP, not an Internet scan target.
-    const parsed = ipaddr.parse(address);
-    // ipaddr marks mapped, translation, multicast, reserved, private, and link-local ranges separately.
-    return parsed.range() === 'unicast';
-  } catch { return false; }
-}
-export type Resolver = (hostname: string) => Promise<{ address: string; family: number }[]>;
-export const systemResolver: Resolver = (hostname) => lookup(hostname, { all: true, verbatim: true });
-export async function resolvePublic(url: URL, resolver: Resolver = systemResolver): Promise<{ address: string; family: number }> {
-  const hostname = url.hostname.replace(/^\[|\]$/g, '');
-  const addresses = isIP(hostname) ? [{ address: hostname, family: isIP(hostname) }] : await resolver(hostname);
-  if (!addresses.length || addresses.some(({ address }) => !publicAddress(address))) throw new PolicyError('Target resolves to a prohibited network');
-  return addresses[0]!;
 }
 export function authorize(request: ScanRequest, url: URL, config: ScannerConfig): number {
   if (request.mode !== undefined && request.mode !== 'passive' && request.mode !== 'active') throw new PolicyError('Invalid scan mode');
