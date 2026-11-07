@@ -19,7 +19,7 @@ export class UrlAnalyzer {
     this.http = new HttpAnalyzer(config, options.transport ?? createHttpTransport(config, this.dns));
   }
   async analyze(input: unknown, cancellation?: AbortSignal): Promise<UrlAnalysisResult> {
-    const started = Date.now();
+    const started = performance.now();
     const result: UrlAnalysisResult = {
       module: 'urlAnalysis', schemaVersion: '1.0', status: 'completed', input: '[REDACTED INVALID URL]', durationMs: 0,
       url: null, features: null, dns: emptyDns(), http: emptyHttp(), errors: [], limitations: [
@@ -29,7 +29,7 @@ export class UrlAnalyzer {
         'DNSSEC, certificate analysis, reputation lookups, browser behavior, and vulnerability testing are outside Module 1.',
       ],
     };
-    const finish = () => { result.durationMs = Date.now() - started; return result; };
+    const finish = () => { result.durationMs = Math.round(performance.now() - started); return result; };
     let parsed: ReturnType<typeof parseUrl>;
     try {
       parsed = parseUrl(input, this.config.maxUrlLength);

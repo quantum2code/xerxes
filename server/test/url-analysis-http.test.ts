@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { setTimeout as delay } from 'node:timers/promises';
-import { MockAgent, request } from 'undici';
+import { Agent, MockAgent, request } from 'undici';
 import { HttpAnalyzer } from '../src/modules/url-analysis/http/client.js';
 import { createHttpTransport, type HttpTransport, type HttpSnapshot } from '../src/modules/url-analysis/http/transport.js';
 import { DnsAnalyzer } from '../src/modules/url-analysis/dns/resolver.js';
@@ -57,6 +57,8 @@ test('oversized GET, bad responses, timeouts and TLS errors have structured non-
   assert.equal(timeout.status, 'timed_out');
   const tls = await new HttpAnalyzer(config, async () => { throw Object.assign(new Error('secret certificate contents'), { code: 'CERT_HAS_EXPIRED' }); }).analyze(target, new AbortController().signal);
   assert.equal(tls.errors[0]?.code, 'CERT_HAS_EXPIRED'); assert.ok(!JSON.stringify(tls).includes('secret'));
+  const protocol = await new HttpAnalyzer(config, async () => { throw Object.assign(new Error('secret handshake details'), { code: 'ERR_SSL_WRONG_VERSION_NUMBER' }); }).analyze(target, new AbortController().signal);
+  assert.equal(protocol.errors[0]?.code, 'ERR_SSL_WRONG_VERSION_NUMBER'); assert.equal(protocol.errors[0]?.message, 'TLS connection failed');
 });
 test('real Undici MockAgent exercises metadata response handling without global dispatchers or external network', async (t) => {
   const mock = new MockAgent(); mock.disableNetConnect(); t.after(() => mock.close());
@@ -64,10 +66,16 @@ test('real Undici MockAgent exercises metadata response handling without global 
   mock.get(target.origin).intercept({ path: '/', method: 'GET' }).reply(200, 'bounded fixture', { headers: { 'content-type': 'text/plain', 'content-length': '15' } });
   const dns = new DnsAnalyzer(config, async (type) => type === 'A' ? [{ address: '8.8.8.8', ttl: 30 }] : []);
   const dispatchers: unknown[] = [];
-  const transport = createHttpTransport(config, dns, (url, options) => { dispatchers.push(options?.dispatcher); return request(url, { ...options, dispatcher: mock }); });
+  const bodies: { destroyed: boolean }[] = [];
+  const transport = createHttpTransport(config, dns, async (url, options) => {
+    dispatchers.push(options?.dispatcher);
+    const response = await request(url, { ...options, dispatcher: mock }); bodies.push(response.body); return response;
+  });
   const result = await new HttpAnalyzer(config, transport).analyze(target, new AbortController().signal);
   assert.equal(result.status, 'completed'); assert.equal(result.method, 'GET'); assert.equal(result.contentType, 'text/plain');
   assert.notStrictEqual(dispatchers[0], dispatchers[1]); mock.assertNoPendingInterceptors();
+  assert.ok(dispatchers.every((dispatcher) => dispatcher instanceof Agent && dispatcher.destroyed));
+  assert.ok(bodies.every((body) => body.destroyed));
 });
 test('transport validates every DNS address and fresh answers for every request, before dispatch', async () => {
   let phase = 0; let sends = 0;

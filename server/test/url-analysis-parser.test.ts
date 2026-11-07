@@ -14,6 +14,7 @@ test('WHATWG normalization and PSL include multi-level and private suffixes', ()
   assert.equal(parsed.data.hasFragment, true); assert.ok(!JSON.stringify(parsed.data).includes('secret'));
   assert.ok(parsed.data.original.startsWith('HTTPS://WWW.Example.CO.UK:443/'));
   assert.equal(parseUrl({ url: 'https://a.user.github.io' }).data.domain, 'user.github.io');
+  assert.equal(parseUrl({ url: 'https://a.invented-suffix-xyz' }).data.domain, null);
 });
 test('Unicode and punycode hosts share ASCII identity without labelling them malicious', () => {
   const a = parseUrl({ url: 'https://bücher.de/' });
@@ -31,7 +32,7 @@ test('IPv4, IPv6 and unusual IP representations are parsed but private connectio
   assert.equal(parseUrl({ url: 'http://8.8.8.8' }).data.ipVersion, 4);
 });
 test('invalid URLs, credentials and unsupported schemes are rejected without echoing input', () => {
-  for (const url of ['ftp://example.com', 'file:///etc/passwd', 'https:example.com', 'https://u:secret@example.com', 'http://example.com\\@localhost', 'http://[bad]', 'http://example.com:65536', ' http://example.com']) assert.throws(() => parseUrl({ url }));
+  for (const url of ['ftp://example.com', 'file:///etc/passwd', 'https:example.com', 'https://u:secret@example.com', 'http://@example.com', 'http://example.com\\@localhost', 'http://[bad]', 'http://example.com:65536', ' http://example.com']) assert.throws(() => parseUrl({ url }));
   for (const input of [null, {}, { url: 3 }, { url: 'a'.repeat(4097) }]) assert.throws(() => parseUrl(input));
 });
 test('features are deterministic numerical observations, including encoding, terms and unusual ports', () => {
@@ -42,6 +43,8 @@ test('features are deterministic numerical observations, including encoding, ter
   assert.equal(f.queryParameterCount, 2); assert.equal(entropy('aaaa'), 0); assert.equal(entropy('ab'), 1);
   assert.ok(!('score' in f) && !('verdict' in f));
   assert.equal(parseUrl({ url: 'https://example.com' }).data.path, '/');
+  const reserved = parseUrl({ url: 'http://example.com:0' });
+  assert.equal(reserved.data.port, 0); assert.throws(() => assertNetworkTarget(reserved.target, loadUrlAnalysisConfig({})));
 });
 test('report URLs remove fragments and redact opaque/reset path values', () => {
   const p = parseUrl({ url: 'https://example.com/reset/hunter2?token=secret#password' });

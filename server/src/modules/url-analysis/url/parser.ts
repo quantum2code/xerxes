@@ -17,9 +17,12 @@ export function parseUrl(input: unknown, maxLength = 4096): ParsedUrl {
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || !url.hostname) throw new AnalysisFailure('INVALID_URL', 'Unsupported scheme or embedded credentials');
   const hostname = url.hostname.replace(/^\[|\]$/g, '').replace(/\.$/, '').toLowerCase();
   const ipVersion = isIP(hostname) as 0 | 4 | 6;
-  const suffix = ipVersion ? null : parse(hostname, { allowPrivateDomains: true });
+  const observedSuffix = ipVersion ? null : parse(hostname, { allowPrivateDomains: true });
+  // tldts can heuristically split unknown suffixes; do not label those as PSL registrable domains.
+  const suffix = observedSuffix && (observedSuffix.isIcann || observedSuffix.isPrivate) ? observedSuffix : null;
   // Lexical authority is used only for features (explicit default ports/noncanonical IPv4), never for connecting.
   const authority = raw.slice(raw.indexOf('://') + 3).split(/[/?#]/, 1)[0]!;
+  if (authority.includes('@')) throw new AnalysisFailure('INVALID_URL', 'Embedded user information is not allowed');
   const rawHostname = authority.startsWith('[') ? authority.slice(1, authority.indexOf(']')) : authority.split(':', 1)[0]!;
   const explicitPort = authority.startsWith('[') ? /\]:\d+$/.test(authority) : /:\d+$/.test(authority);
   const data: UrlData = {

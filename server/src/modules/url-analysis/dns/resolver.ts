@@ -48,26 +48,26 @@ export class DnsAnalyzer {
     }
   }
   async analyze(hostname: string, signal: AbortSignal): Promise<DnsResult> {
-    const started = Date.now();
+    const started = performance.now();
     const result = emptyDns();
     await Promise.all(recordTypes.map(async (type) => {
-      const start = Date.now();
+      const start = performance.now();
       try {
         const raw = await this.execute(type, hostname, signal);
         const truncated = applyRecords(result, type, raw, this.config);
-        result.queries[type] = { status: raw.length ? 'completed' : 'absent', durationMs: Date.now() - start, truncated };
+        result.queries[type] = { status: raw.length ? 'completed' : 'absent', durationMs: Math.round(performance.now() - start), truncated };
       } catch (error) {
         const timedOut = error instanceof Error && error.name === 'TimeoutError';
         const observed = timedOut ? { stage: 'dns' as const, code: 'TIMEOUT', message: 'DNS query deadline exceeded', retryable: true } : structuredError('dns', error, signal);
         const recordError = { ...observed, recordType: type };
         result.errors.push(recordError);
-        result.queries[type] = { status: observed.code === 'ENODATA' ? 'absent' : 'failed', durationMs: Date.now() - start, truncated: false, error: recordError };
+        result.queries[type] = { status: observed.code === 'ENODATA' ? 'absent' : 'failed', durationMs: Math.round(performance.now() - start), truncated: false, error: recordError };
       }
     }));
     const queries = Object.values(result.queries);
     const failures = queries.filter((q) => q.status === 'failed').length;
     result.status = failures === queries.length ? 'failed' : failures || queries.some((q) => q.truncated) ? 'partial' : 'completed';
-    result.durationMs = Date.now() - started;
+    result.durationMs = Math.round(performance.now() - started);
     // Deterministic record-type error order, independent of query completion timing.
     result.errors.sort((a, b) => recordTypes.indexOf(a.recordType!) - recordTypes.indexOf(b.recordType!));
     return result;

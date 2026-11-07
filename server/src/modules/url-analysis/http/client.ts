@@ -34,7 +34,7 @@ function metadata(response: HttpSnapshot): Pick<HttpResult, 'headers' | 'content
 export class HttpAnalyzer {
   constructor(private readonly config: UrlAnalysisConfig, private readonly transport: HttpTransport) {}
   async analyze(target: URL, parent: AbortSignal): Promise<HttpResult> {
-    const started = Date.now();
+    const started = performance.now();
     const result = emptyHttp();
     let current = new URL(target.href);
     const visited = new Set<string>();
@@ -82,9 +82,11 @@ export class HttpAnalyzer {
     } catch (error) {
       const detail = structuredError('http', error, activeSignal);
       result.errors.push(detail);
-      result.status = detail.code === 'NETWORK_BLOCKED' ? 'blocked' : detail.code === 'TIMEOUT' ? 'timed_out' : detail.code === 'CANCELLED' ? 'cancelled' : 'failed';
+      result.status = detail.code === 'NETWORK_BLOCKED' ? 'blocked' :
+        ['TIMEOUT', 'ETIMEOUT', 'ETIMEDOUT', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT'].includes(detail.code) ? 'timed_out' :
+          detail.code === 'CANCELLED' ? 'cancelled' : 'failed';
     }
-    result.responseTimeMs = Date.now() - started;
+    result.responseTimeMs = Math.round(performance.now() - started);
     return result;
   }
 }
