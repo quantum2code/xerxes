@@ -4,11 +4,14 @@ import { PipelineRunner } from './pipeline/pipeline-runner.js';
 import { buildThreatDetectionPipeline } from './pipelines/threat-detection-pipeline.js';
 import type { ThreatDetectionPipelineOptions } from './pipelines/threat-detection-pipeline.js';
 import { InvalidThreatDetectionInputError } from './tasks/threat-detection/validate-url.js';
+import { validateCertificate } from './modules/certificate-validation/index.js';
+import type { CertificateTask } from './modules/certificate-validation/index.js';
 
 const BODY_LIMIT = '16kb';
 
 /** Configuration is server-owned, never read from request bodies. Reuses one runner across requests. */
-export function createApp(options: ThreatDetectionPipelineOptions = {}) {
+export function createApp(options: ThreatDetectionPipelineOptions & { certificate?: CertificateTask } = {}) {
+  const certificate = options.certificate ?? validateCertificate;
   const dag = buildThreatDetectionPipeline(options);
   const runner = new PipelineRunner(dag);
   const app = express();
@@ -26,6 +29,21 @@ export function createApp(options: ThreatDetectionPipelineOptions = {}) {
     // validateUrl is the graph's first task; no second HTTP-specific validation pass.
     const results = await runner.run(req.body);
     res.json(results);
+  });
+
+  // Engine 3 is a separate module with its own endpoint. Expected outcomes (skipped, blocked, unreachable) are 200
+  // results with a status; only malformed requests are errors.
+  app.post('/api/certificate', async (req, res) => {
+    if (!req.is('application/json')) {
+      res.status(415).json({ error: { code: 'unsupported_media_type', message: 'Use Content-Type: application/json' } });
+      return;
+    }
+    const body: unknown = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body) || !('url' in body) || typeof body.url !== 'string') {
+      res.status(400).json({ error: { code: 'invalid_input', message: 'Provide an object with a string url' } });
+      return;
+    }
+    res.json(await certificate({ url: body.url }));
   });
 
   const handleError: ErrorRequestHandler = (error: unknown, _req, res, next) => {
