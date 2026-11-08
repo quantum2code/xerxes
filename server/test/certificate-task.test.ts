@@ -127,8 +127,8 @@ test('live sites', { skip: !process.env.LIVE_TLS }, async () => {
     'https://expired.badssl.com': 'cert.expired',
     'https://self-signed.badssl.com': 'cert.self_signed',
     'https://wrong.host.badssl.com': 'cert.hostname_mismatch',
-    'https://untrusted-root.badssl.com': 'cert.untrusted_chain',
-    'https://incomplete-chain.badssl.com': 'cert.untrusted_chain',
+    'https://untrusted-root.badssl.com': 'chain.unknown_issuer',
+    'https://incomplete-chain.badssl.com': 'chain.incomplete',
   };
   for (const [url, finding] of Object.entries(expected)) {
     const result = await validateCertificate({ url });
