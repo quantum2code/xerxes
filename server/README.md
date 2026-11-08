@@ -2,6 +2,8 @@
 
 Express + TypeScript with a DAG execution engine, [Module 1 URL analyzer](docs/url-analysis.md) (URL features, DNS and safe HTTP metadata), and [Module 4 web security scanner](docs/web-security.md). Other analysis modules remain explicit mocks. Both modules provide typed, redacted results rather than a final phishing verdict.
 
+[Engine 2](docs/engine2.md) adds independent scope validation, ZAP Spider, passive and verified opt-in active modules. It is disabled by default; request it with nested `engine2` input on `/api/analyze`. Its isolated Docker gateway, grants, local fixture and live-test instructions are documented separately. Existing analyzer/scanner implementations remain unchanged.
+
 ```sh
 pnpm install
 pnpm dev
@@ -40,13 +42,14 @@ src/
     security-pipeline.ts     Application DAG with independent URL/security analysis
   modules/url-analysis/      URL parsing, features, DNS and pinned Undici metadata
   modules/web-security/      Native checks, safe transport, optional isolated ZAP
+  engines/engine2/            Modular scoped ZAP assessment and per-job policy gateway
   shared/                    Shared IP policy, redaction and concurrency limits
 test/                        DAG engine and security pipeline tests
 ```
 
 ## Legacy mock pipeline
 
-The following describes the retained `pipelines/mock-pipeline.ts` factory, not the application's six-task analysis DAG. The legacy factory returns four mock tasks and does not execute them.
+The following describes the retained `pipelines/mock-pipeline.ts` factory, not the application's analysis DAG. The legacy factory returns four mock tasks and does not execute them.
 
 ```mermaid
 flowchart TD
