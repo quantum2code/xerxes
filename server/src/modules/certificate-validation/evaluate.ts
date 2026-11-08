@@ -8,6 +8,8 @@ export interface CertificateFinding {
   id: string;
   severity: Severity;
   message: string;
+  /** validity | chain | crypto. Set by chain checks; others get it from categorize(). */
+  category?: 'validity' | 'chain' | 'crypto';
 }
 
 export interface CertificateDetails {
@@ -39,11 +41,11 @@ export interface EvaluateOptions {
   trustError?: string;
 }
 
-const DAY_MS = 86_400_000;
-const EXPIRING_SOON_DAYS = 14;
+export const DAY_MS = 86_400_000;
+export const EXPIRING_SOON_DAYS = 14;
 const MAX_VALIDITY_DAYS = 398; // longest validity browsers accept for public certificates
-const MIN_RSA_BITS = 2048;
-const MIN_EC_BITS = 224;
+export const MIN_RSA_BITS = 2048;
+export const MIN_EC_BITS = 224;
 
 const CURVE_BITS: Record<string, number> = {
   prime192v1: 192,
@@ -62,7 +64,7 @@ const ALREADY_REPORTED = new Set([
   'DEPTH_ZERO_SELF_SIGNED_CERT',
 ]);
 
-function keyInfo(cert: X509Certificate): { type: string | undefined; bits: number | undefined } {
+export function keyInfo(cert: X509Certificate): { type: string | undefined; bits: number | undefined } {
   const key = cert.publicKey;
   const details = key.asymmetricKeyDetails;
   if (key.asymmetricKeyType === 'rsa') return { type: 'rsa', bits: details?.modulusLength };
@@ -90,7 +92,7 @@ export function evaluateCertificate(cert: X509Certificate, options: EvaluateOpti
   const add = (id: string, severity: Severity, message: string) => findings.push({ id, severity, message });
 
   if (now > validTo) {
-    add('cert.expired', 'high', `Certificate expired ${-daysUntilExpiry} day(s) ago`);
+    add('cert.expired', 'high', `Certificate expired ${Math.floor((now.getTime() - validTo.getTime()) / DAY_MS)} day(s) ago`);
   } else if (now < validFrom) {
     add('cert.not_yet_valid', 'high', `Certificate is not valid until ${validFrom.toISOString()}`);
   } else if (daysUntilExpiry <= EXPIRING_SOON_DAYS) {

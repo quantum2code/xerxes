@@ -1,6 +1,8 @@
 import ipaddr from 'ipaddr.js';
-import { parseTarget, PolicyError, resolvePublic, systemResolver, type Resolver } from '../web-security/network/policy.js';
+import { parseTlsTarget, PolicyError, resolvePublic, systemResolver, type Resolver } from './guard.js';
 import { connectTls, type Connector } from './connect.js';
+import { categorize } from './categories.js';
+import { evaluateChain, type ChainCertificate } from './chain.js';
 import { evaluateCertificate, type CertificateDetails, type CertificateFinding } from './evaluate.js';
 
 export type CertificateStatus = 'ok' | 'skipped' | 'blocked' | 'error';
@@ -13,6 +15,8 @@ export interface CertificateValidationResult {
   trustError?: string;
   findings: CertificateFinding[];
   details?: CertificateDetails;
+  /** Every certificate the server presented, with per-certificate facts. */
+  chain?: { complete: boolean; certificates: ChainCertificate[] };
   coverageLimitations?: string[];
 }
 
@@ -20,7 +24,6 @@ export type CertificateTask = (input: unknown) => Promise<CertificateValidationR
 
 export const COVERAGE_LIMITATIONS = [
   'Revocation (CRL/OCSP) is not checked',
-  'Only the leaf certificate is evaluated, not intermediates',
   'Signature algorithm and Certificate Transparency are not checked',
 ];
 
@@ -70,7 +73,7 @@ export function createCertificateTask(options: CertificateTaskOptions = {}): Cer
       try { url = new URL(raw); } catch { return empty('error', 'Invalid URL'); }
       if (url.protocol === 'http:') return empty('skipped', 'HTTP URL: there is no TLS certificate to check');
       url.hash = '';
-      try { parseTarget(url.href); } catch (error) {
+      try { parseTlsTarget(url.href); } catch (error) {
         if (error instanceof PolicyError) return empty('blocked', error.message);
         throw error;
       }
@@ -84,13 +87,19 @@ export function createCertificateTask(options: CertificateTaskOptions = {}): Cer
       try {
         peer = await connect({ hostname, address: address.address, port: Number(url.port) || 443 }, timeoutMs);
       } catch (error) { return empty('error', describe(error)); }
-      const report = evaluateCertificate(peer.cert, { hostname, now: now(), trustError: peer.authorizationError });
+      const at = now();
+      const report = evaluateCertificate(peer.cert, { hostname, now: at, trustError: peer.authorizationError });
+      const chain = peer.chain ? evaluateChain(peer.chain, { now: at, trustError: peer.authorizationError }) : undefined;
+      // A precise chain finding replaces the leaf's generic untrusted-chain one for the same handshake error.
+      const explained = chain?.findings.some((f) => f.id === 'chain.incomplete' || f.id === 'chain.unknown_issuer');
+      const findings = [...report.findings.filter((f) => !(explained && f.id === 'cert.untrusted_chain')), ...(chain?.findings ?? [])].map(categorize);
       return {
         status: 'ok',
-        valid: report.valid,
+        valid: !findings.some((finding) => finding.severity === 'high' || finding.severity === 'critical'),
         ...(peer.authorizationError ? { trustError: peer.authorizationError } : {}),
-        findings: report.findings,
+        findings,
         details: report.details,
+        ...(chain ? { chain: { complete: chain.complete, certificates: chain.certificates } } : {}),
         coverageLimitations: [...COVERAGE_LIMITATIONS],
       };
     } catch {
