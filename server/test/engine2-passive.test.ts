@@ -37,3 +37,9 @@ test('Passive API failures cannot be reported as completed zero findings', async
   const result = await scanPassive(job, job.scope);
   assert.notEqual(result.status, 'completed'); assert.ok(!JSON.stringify(result).includes('secret API-key'));
 });
+test('normalization preserves distinct method provenance while deduplicating repeated alerts', async () => {
+  const { job } = await mockJob(async () => ({}));
+  const result = normalizeAlerts([passiveAlert, passiveAlert, { ...passiveAlert, id: '2', method: 'HEAD' }], job.scope, 'passive');
+  assert.equal(result.findings.length, 2);
+  assert.ok(result.findings.some((finding) => finding.evidence[0]?.observation.includes('Method HEAD')));
+});

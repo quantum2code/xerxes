@@ -33,7 +33,7 @@ export function normalizeAlerts(raw: unknown[], scope: ApprovedScope, scanType: 
     const confidence = /^\d+$/.test(String(alert.confidence)) ? Number(alert.confidence) : ['false positive', 'low', 'medium', 'high', 'confirmed'].indexOf(String(alert.confidence).toLowerCase());
     if (confidence === 0) continue;
     if (![0, 1, 2, 3].includes(risk) || ![1, 2, 3, 4].includes(confidence) || !/^\d+$/.test(String(alert.pluginId))) { invalid++; continue; }
-    const key = JSON.stringify([alert.pluginId, new URL(alert.url).href, alert.param]);
+    const key = JSON.stringify([alert.pluginId, new URL(alert.url).href, alert.param, alert.method]);
     if (keys.has(key)) continue; keys.add(key);
     const cwe = /^\d+$/.test(String(alert.cweid)) && Number(alert.cweid) > 0 ? `CWE-${alert.cweid}` : null;
     const references = new Set<string>([`https://www.zaproxy.org/docs/alerts/${alert.pluginId}/`]);

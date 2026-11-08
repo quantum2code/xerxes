@@ -36,7 +36,15 @@ test('private, mapped IPv6, metadata and mixed DNS answers are rejected', async 
 });
 test('ambiguous encodings, credential syntax and path escape attempts cannot bypass scope', async () => {
   const validator = new ScopeValidator(config(), async () => [{ address: '8.8.8.8', family: 4 }]);
-  for (const url of ['https://staging.example.com/app/%2fprivate', 'https://staging.example.com/app/%252e%252e/x', 'https://staging.example.com/app/../admin', 'https://u:secret@staging.example.com/app', 'https://@staging.example.com/app', 'https://staging.example.com/app;admin', 'https://staging.example.com/app#token']) assert.equal((await validator.validate({ ...request, url })).result.approved, false, url);
+  for (const url of ['https://staging.example.com/app/%2fprivate', 'https://staging.example.com/app/%252e%252e/x', 'https://staging.example.com/app/../admin', 'https://u:secret@staging.example.com/app', 'https://@staging.example.com/app', 'https://staging.example.com/app;admin', 'https://staging.example.com/app#token', 'https://staging.example.com/app#']) assert.equal((await validator.validate({ ...request, url })).result.approved, false, url);
+});
+test('subdomain grants cannot cover public/private suffixes or unknown registries', async () => {
+  for (const hostname of ['com', 'co.uk', 'github.io', 'unknown-registry']) {
+    const cfg = config(); cfg.grants[0]!.rules.hosts = [{ hostname, includeSubdomains: true }];
+    let lookups = 0;
+    const result = await new ScopeValidator(cfg, async () => { lookups++; return []; }).validate(request);
+    assert.equal(result.result.approved, false); assert.equal(lookups, 0);
+  }
 });
 test('local profile requires verified internal Docker fixture identity; it is not a private-network allow switch', async () => {
   const cfg = config(); cfg.grants[0]!.rules.profile = 'isolated-lab';
