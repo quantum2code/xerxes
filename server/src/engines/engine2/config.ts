@@ -27,6 +27,7 @@ export function loadEngine2Config(env: NodeJS.ProcessEnv = process.env): Engine2
     maxDepth: int('ENGINE2_MAX_DEPTH', 3, 10), maxChildren: int('ENGINE2_MAX_CHILDREN', 10, 100),
     maxEndpoints: int('ENGINE2_MAX_ENDPOINTS', 100, 1000), maxActiveEndpoints: int('ENGINE2_MAX_ACTIVE_ENDPOINTS', 3, 20),
     maxFindings: int('ENGINE2_MAX_FINDINGS', 500, 1000), maxConcurrentScans: int('ENGINE2_MAX_CONCURRENT_SCANS', 2, 8),
+    passiveRuleIds: json('ENGINE2_PASSIVE_RULE_IDS', z.array(z.string().regex(/^\d+$/)).max(64), []),
     zapImage: env.ENGINE2_ZAP_IMAGE ?? 'ghcr.io/zaproxy/zaproxy:stable', gatewayImage: env.ENGINE2_GATEWAY_IMAGE ?? 'xerxes-engine2-gateway:local',
     labNetwork: env.ENGINE2_LAB_NETWORK ?? 'xerxes-engine2-lab', labTargetContainer: env.ENGINE2_LAB_TARGET ?? 'xerxes-engine2-fixture',
   };

@@ -34,7 +34,7 @@ export interface ScopeValidationResult {
   excludedPaths: string[]; scopeId: string | null; contextId: string | null; rejectionReason: string | null; limitations: string[];
 }
 export const findingSchema = z.object({
-  id: z.string().uuid(), engine: z.literal('engine2'), source: z.literal('zap'), zapPluginId: z.string().regex(/^\d+$/),
+  id: z.string().uuid(), engine: z.literal('engine2'), source: z.literal('zap'), scanType: modeSchema, zapPluginId: z.string().regex(/^\d+$/), zapAlertId: z.string().nullable(),
   title: z.string(), description: z.string(), severity: z.enum(['informational', 'low', 'medium', 'high', 'critical']),
   confidence: z.enum(['low', 'medium', 'high']), cweId: z.string().regex(/^CWE-\d+$/).nullable(),
   owasp: z.array(z.string()), affectedEndpoint: z.string(), evidence: z.array(z.object({ location: z.string(), observation: z.string() })),
@@ -47,7 +47,7 @@ export interface SpiderScanResult {
   endpointCount: number; durationMs: number; exclusions: { url: string; reason: string }[]; limitations: string[];
 }
 export interface PassiveScanResult {
-  status: ScanStatus; errors: Engine2Error[]; analysedMessages: number | null; pendingRecords: number | null;
+  status: ScanStatus; errors: Engine2Error[]; analysedMessages: number | null; observedMessages: number | null; pendingRecords: number | null;
   findings: Engine2Finding[]; counts: SeverityCounts; durationMs: number; limitations: string[];
 }
 export interface ActiveScanResult {
@@ -66,5 +66,6 @@ export interface Engine2Config {
   apiTimeoutMs: number; requestTimeoutMs: number; pollIntervalMs: number; requestIntervalMs: number;
   maxRequests: number; maxResponseBytes: number; maxRequestBytes: number; maxDepth: number; maxChildren: number;
   maxEndpoints: number; maxActiveEndpoints: number; maxFindings: number; maxConcurrentScans: number;
+  passiveRuleIds: string[];
   zapImage: string; gatewayImage: string; labNetwork: string; labTargetContainer: string;
 }

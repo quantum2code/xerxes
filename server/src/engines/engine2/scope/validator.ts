@@ -13,18 +13,25 @@ const capability = Symbol('approved-engine2-scope');
 /** Runtime capability: a JSON object with approved:true is never accepted by scanning modules. */
 export class ApprovedScope {
   readonly id = randomUUID();
-  private readonly rulesValue: ScopeRules;
-  constructor(key: symbol, readonly target: string, readonly request: Readonly<Engine2ScanRequest>, rules: ScopeRules,
+  readonly #rulesValue: ScopeRules;
+  readonly #target: string;
+  readonly request: Readonly<Pick<Engine2ScanRequest, 'mode' | 'policy' | 'authorizationId'>>;
+  constructor(key: symbol, target: string, request: Engine2ScanRequest, rules: ScopeRules,
     readonly expiresAt: number, readonly lab: Readonly<LabAttestation> | null) {
     if (key !== capability) throw new Engine2Failure('UNAPPROVED_SCOPE', 'Scope approval capability required');
-    this.rulesValue = structuredClone(rules);
+    this.#target = target;
+    this.request = { mode: request.mode, policy: request.policy, authorizationId: request.authorizationId };
+    this.#rulesValue = structuredClone(rules);
+    if (lab) { this.lab = structuredClone(lab); Object.freeze(this.lab.addresses); Object.freeze(this.lab); }
     Object.freeze(this.request); Object.freeze(this);
   }
-  get rules(): ScopeRules { return structuredClone(this.rulesValue); }
-  includes(url: string | URL) { return checkScope(url, this.rulesValue); }
+  get target(): string { return this.#target; }
+  get rules(): ScopeRules { return structuredClone(this.#rulesValue); }
+  toJSON() { return { scopeId: this.id }; }
+  includes(url: string | URL) { return checkScope(url, this.#rulesValue); }
   check(url: string | URL) {
     if (Date.now() >= this.expiresAt) return { allowed: false, reason: 'AUTHORIZATION_EXPIRED' };
-    return checkScope(url, this.rulesValue);
+    return checkScope(url, this.#rulesValue);
   }
   assert(url: string | URL): void {
     const decision = this.check(url);
@@ -70,7 +77,7 @@ export class ScopeValidator {
       signal.throwIfAborted();
       const scope = new ApprovedScope(capability, target.href, request, rules, Date.parse(grant.expiresAt), lab);
       Object.assign(result, { status: 'completed', approved: true, normalizedTarget: safeUrl(target.href), authorizedMode: request.mode,
-        allowedHosts: rules.hosts, excludedPaths: rules.excludedPaths, scopeId: scope.id,
+        allowedHosts: rules.hosts, excludedPaths: rules.excludedPaths.map((path) => new URL(safeUrl(`https://scope.invalid${path}`)).pathname), scopeId: scope.id,
         limitations: ['Authorization is operator-provisioned; a client consent flag does not establish ownership.', 'DNS and scope are rechecked at the gateway for every actual request.'] });
       return { result, scope };
     } catch (error) {

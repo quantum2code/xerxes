@@ -6,11 +6,12 @@ import type { Engine2Config } from '../types.js';
 export interface GatewayStatistics { forwarded: number; denied: number; failures: number; exhausted: boolean; }
 export interface ZapJob {
   id: string; scope: ApprovedScope; client: ZapClient; contextId: string; config: Engine2Config;
-  enterPhase(phase: 'crawl' | 'active', signal: AbortSignal): Promise<void>;
+  enterPhase(phase: 'idle' | 'crawl' | 'active', signal: AbortSignal): Promise<void>;
   statistics(signal: AbortSignal): Promise<GatewayStatistics>;
   exclusive<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T>;
   recordEndpoints(urls: string[]): void;
   endpoints(): string[];
+  toJSON?(): { jobId: string; scopeId: string };
   close(): Promise<void>;
 }
 export type JobFactory = (scope: ApprovedScope, signal: AbortSignal) => Promise<ZapJob>;
