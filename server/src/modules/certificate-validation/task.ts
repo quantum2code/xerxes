@@ -24,7 +24,7 @@ export type CertificateTask = (input: unknown) => Promise<CertificateValidationR
 
 export const COVERAGE_LIMITATIONS = [
   'Revocation (CRL/OCSP) is not checked',
-  'Signature algorithm and Certificate Transparency are not checked',
+  'Signature algorithm, negotiated TLS version/cipher and Certificate Transparency are not checked',
 ];
 
 export interface CertificateTaskOptions {
