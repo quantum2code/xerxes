@@ -2,12 +2,12 @@ import express from 'express';
 import { PipelineRunner } from './pipeline/pipeline-runner.js';
 import { buildSecurityPipeline, type ScannerTask } from './pipelines/security-pipeline.js';
 import { loadConfig, WebSecurityScanner } from './modules/web-security/index.js';
-import { createZapBackend } from './modules/web-security/integrations/zap.js';
+import { createZapBackend } from './modules/web-security/integrations/zap.js'; import type { CertificateTask } from './modules/certificate-validation/index.js';
 
-export function createApp(options: { scanner?: ScannerTask } = {}) {
+export function createApp(options: { scanner?: ScannerTask; certificate?: CertificateTask } = {}) {
   const config = loadConfig();
   const scanner = options.scanner ?? new WebSecurityScanner(config, { zap: createZapBackend(config) });
-  const dag = buildSecurityPipeline(scanner);
+  const dag = buildSecurityPipeline(scanner, options.certificate);
   const runner = new PipelineRunner(dag);
   const app = express();
   app.disable('x-powered-by');

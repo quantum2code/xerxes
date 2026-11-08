@@ -4,28 +4,28 @@ import { once } from 'node:events';
 import { createApp } from '../src/app.js';
 import { buildSecurityPipeline } from '../src/pipelines/security-pipeline.js';
 import { PipelineRunner } from '../src/pipeline/pipeline-runner.js';
-import { WebSecurityScanner, loadConfig } from '../src/modules/web-security/index.js';
+import { WebSecurityScanner, loadConfig } from '../src/modules/web-security/index.js'; import { expiredCertificateTask } from './fixtures/expired-certificate-task.js';
 
 test('production DAG adds independent scanner and separate backward-compatible assessment', async () => {
   const scanner = new WebSecurityScanner(loadConfig({}));
-  const dag = buildSecurityPipeline(scanner);
+  const dag = buildSecurityPipeline(scanner, expiredCertificateTask);
   assert.deepEqual(dag.getDependencies('webSecurityScan'), []);
   assert.deepEqual(dag.getDependencies('securityAssessment'), ['certificateValidation', 'threatAnalysis', 'webSecurityScan']);
   const results = await new PipelineRunner(dag).run({ url: 'https://example.com' });
   const assessment = results.securityAssessment as { findings: string[]; webSecurity: { status: string } };
-  assert.deepEqual(assessment.findings, ['Mock certificate validation failed']);
+  assert.deepEqual(assessment.findings, ['cert.expired: Certificate expired 1 day(s) ago']);
   assert.equal(assessment.webSecurity.status, 'blocked');
   assert.deepEqual(results.threatAnalysis, { verdict: 'unknown', score: 0 });
 });
 test('real scanner failure remains structured and does not block other pipeline branches', async () => {
   const scanner = new WebSecurityScanner(loadConfig({ WEB_SECURITY_REQUIRE_PASSIVE_AUTH: 'false' }), { transport: async () => { throw new Error(); } });
-  const result = await new PipelineRunner(buildSecurityPipeline(scanner)).run({ url: 'https://example.com' });
+  const result = await new PipelineRunner(buildSecurityPipeline(scanner, expiredCertificateTask)).run({ url: 'https://example.com' });
   assert.equal((result.webSecurityScan as { status: string }).status, 'failed');
   assert.equal((result.securityAssessment as { webSecurity: { status: string } }).webSecurity.status, 'failed');
   assert.ok(result.certificateValidation);
 });
 test('HTTP endpoints expose standalone/pipeline results and sanitize malformed requests', async (t) => {
-  const server = createApp({ scanner: new WebSecurityScanner(loadConfig({})) }).listen(0, '127.0.0.1');
+  const server = createApp({ scanner: new WebSecurityScanner(loadConfig({})), certificate: expiredCertificateTask }).listen(0, '127.0.0.1');
   await once(server, 'listening');
   t.after(() => { server.closeAllConnections(); server.close(); });
   const origin = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
