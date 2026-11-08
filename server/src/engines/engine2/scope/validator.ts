@@ -9,7 +9,7 @@ import { verifyAuthorization } from './authorization.js';
 import { resolveAddresses } from '../zap/gateway-transport.js';
 
 export interface LabAttestation { networkId: string; addresses: string[]; hostname: string; }
-export type LabVerifier = () => Promise<LabAttestation>;
+export type LabVerifier = (signal?: AbortSignal) => Promise<LabAttestation>;
 const capability = Symbol('approved-engine2-scope');
 /** Runtime capability: a JSON object with approved:true is never accepted by scanning modules. */
 export class ApprovedScope {
@@ -52,6 +52,7 @@ export class ScopeValidator {
     const result = emptyScope();
     const signal = AbortSignal.any([parent, AbortSignal.timeout(this.config.requestTimeoutMs)]);
     try {
+      signal.throwIfAborted();
       const parsed = requestSchema.safeParse(input);
       if (!parsed.success) throw new Engine2Failure('INVALID_REQUEST', 'Invalid Engine 2 URL, mode or authorization request');
       const request = parsed.data;
@@ -64,7 +65,7 @@ export class ScopeValidator {
       let lab: LabAttestation | null = null;
       if (rules.profile === 'isolated-lab') {
         if (!this.verifyLab) throw new Engine2Failure('LAB_NOT_ISOLATED', 'Isolated development network verification unavailable');
-        lab = await this.verifyLab();
+        lab = await this.verifyLab(signal);
         if (host !== lab.hostname || !lab.addresses.length || rules.hosts.some((h) => h.includeSubdomains || h.hostname !== lab!.hostname)) throw new Engine2Failure('LAB_SCOPE_MISMATCH', 'Development grants may only target the verified fixture container');
       } else {
         if (/(?:^|\.)(?:localhost|local|internal|home|lan|test|invalid|onion)\.?$/i.test(host) || host.endsWith('.') || (isIP(host) && !publicAddress(host))) throw new Engine2Failure('NETWORK_BLOCKED', 'Prohibited target hostname or address');
@@ -76,6 +77,7 @@ export class ScopeValidator {
         });
       }
       signal.throwIfAborted();
+      verifyAuthorization(request, this.config); // DNS/attestation must not outlive the grant.
       const scope = new ApprovedScope(capability, target.href, request, rules, Date.parse(grant.expiresAt), lab);
       Object.assign(result, { status: 'completed', approved: true, normalizedTarget: safeUrl(target.href), authorizedMode: request.mode,
         allowedHosts: rules.hosts, excludedPaths: rules.excludedPaths.map((path) => new URL(safeUrl(`https://scope.invalid${path}`)).pathname), scopeId: scope.id,

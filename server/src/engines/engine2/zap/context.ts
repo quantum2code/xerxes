@@ -11,7 +11,11 @@ export function contextPatterns(scope: ApprovedScope): { includes: string[]; exc
     const defaultPort = protocol === 'https:' ? 443 : 80;
     return `${escaped(protocol)}//${host}${port === defaultPort ? `(?::${port})?` : `:${port}`}`;
   })));
-  const pathPattern = (path: string) => path === '/' ? '/[^#]*' : `${escaped(path)}(?:/[^#?]*)?(?:\\?[^#]*)?`;
+  const pathPattern = (path: string) => {
+    if (path === '/') return '/[^#]*';
+    const variants = [...new Set([path, new URL(path, 'https://scope.invalid').pathname])].map(escaped);
+    return `(?:${variants.join('|')})(?:/[^#?]*)?(?:\\?[^#]*)?`;
+  };
   return {
     includes: prefixes.flatMap((p) => rules.paths.map((path) => `^${p}${pathPattern(path)}$`)),
     excludes: prefixes.flatMap((p) => rules.excludedPaths.map((path) => `^${p}${pathPattern(path)}$`)),

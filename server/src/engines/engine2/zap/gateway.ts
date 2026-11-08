@@ -96,7 +96,7 @@ export async function createPolicyGateway(policy: GatewayPolicy, config: Engine2
     } catch { stats.denied++; socket.end('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n'); }
   });
   server.on('upgrade', (_req, socket) => { stats.denied++; socket.destroy(); });
-  server.on('checkContinue', (req, res) => { stats.denied++; req.resume(); res.writeHead(417); res.end(); });
+  server.on('checkContinue', (req, res) => { stats.denied++; req.resume(); res.destroy(); });
   server.on('clientError', (_error, socket) => socket.destroy());
   return { server, certificate: ca.certificate, stats,
     async close() { for (const socket of sockets) socket.destroy(); server.close(() => {}); for (const receiver of tlsServers.values()) (await receiver).close(() => {}); } };

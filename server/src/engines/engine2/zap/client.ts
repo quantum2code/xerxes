@@ -4,7 +4,8 @@ import { Engine2Failure } from '../errors.js';
 export interface ApiRequest { component: string; kind: 'view' | 'action'; name: string; params: Record<string, string>; }
 export type ZapTransport = (request: ApiRequest, signal: AbortSignal) => Promise<unknown>;
 export const idSchema = z.string().regex(/^\d+$/);
-export const progressSchema = z.object({ status: z.coerce.number().int().min(0).max(100) });
+export const countSchema = z.union([z.number().int().nonnegative(), z.string().regex(/^\d+$/).transform(Number)]).refine(Number.isSafeInteger);
+export const progressSchema = z.object({ status: countSchema.refine((n) => n <= 100) });
 export const okSchema = z.object({ Result: z.literal('OK') });
 /** Per-job state, no global client defaults; transport never automatically retries scan-start calls. */
 export class ZapClient {

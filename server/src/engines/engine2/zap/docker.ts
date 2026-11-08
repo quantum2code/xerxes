@@ -59,18 +59,23 @@ export function createDockerJobFactory(config: Engine2Config, docker: DockerRunn
     const apiKey = randomUUID(); const label = `xerxes.engine2.job=${id}`;
     const expiresAt = Math.min(scope.expiresAt, Date.now() + config.totalTimeoutMs);
     const signal = AbortSignal.any([parent, AbortSignal.timeout(Math.max(1, expiresAt - Date.now()))]);
-    const containers: string[] = []; let volumeCreated = false; let closed = false;
-    const cleanup = async () => {
-      if (closed) return; closed = true;
-      let failed = false;
-      for (const name of [...containers].reverse()) try { await docker(['rm', '-f', name], { timeoutMs: 10000 }); } catch { failed = true; }
-      if (volumeCreated) try { await docker(['volume', 'rm', volume], { timeoutMs: 10000 }); } catch { failed = true; }
-      if (failed) throw new Engine2Failure('CLEANUP_FAILED', `Inspect only resources labelled ${label}; Docker cleanup was incomplete`);
+    const containers: string[] = []; let volumeCreated = false; let closed = false; let cleaning: Promise<void> | null = null;
+    const cleanup = (): Promise<void> => {
+      closed = true;
+      if (cleaning) return cleaning;
+      cleaning = (async () => {
+        for (const name of [...containers].reverse()) try {
+          await docker(['rm', '-f', name], { timeoutMs: 10000 }); containers.splice(containers.indexOf(name), 1);
+        } catch { /* Keep failed resources for a later close attempt. */ }
+        if (volumeCreated && !containers.length) try { await docker(['volume', 'rm', volume], { timeoutMs: 10000 }); volumeCreated = false; } catch { /* Retryable cleanup. */ }
+        if (containers.length || volumeCreated) throw new Engine2Failure('CLEANUP_FAILED', `Inspect only resources labelled ${label}; Docker cleanup was incomplete`);
+      })().finally(() => { cleaning = null; });
+      return cleaning;
     };
     try {
       let network = 'bridge';
       if (scope.rules.profile === 'isolated-lab') {
-        const lab = await verifyLab(config, docker);
+        const lab = await verifyLab(config, docker, signal);
         if (lab.networkId !== scope.lab?.networkId || JSON.stringify(lab.addresses) !== JSON.stringify(scope.lab.addresses) || lab.hostname !== scope.lab.hostname) throw new Engine2Failure('LAB_CHANGED', 'Development network changed since scope approval');
         network = config.labNetwork;
       }
@@ -121,7 +126,7 @@ export function createDockerJobFactory(config: Engine2Config, docker: DockerRunn
       await client.action('network', 'setSocksProxyEnabled', { enabled: 'false' }, signal);
       const contextId = await createContext(client, scope, signal);
       const lock = new Semaphore(1); const endpoints = new Set<string>();
-      const job: ZapJob = { id, scope, client, contextId, config,
+      const job: ZapJob = { id, scope, client, contextId, config, passiveConfigured: false,
         async enterPhase(phase, callSignal) {
           if (phase === 'active') ApprovedScope.assert(scope);
           if (phase === 'active' && (scope.request.mode !== 'active' || !config.activeEnabled)) throw new Engine2Failure('ACTIVE_NOT_AUTHORIZED', 'This job is not authorized for active testing');

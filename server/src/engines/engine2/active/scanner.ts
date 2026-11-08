@@ -23,7 +23,7 @@ export async function scanActive(job: ZapJob, scope: ApprovedScope, endpoints = 
     for (const endpoint of endpoints) scope.assert(endpoint);
     const unique = [...new Set(endpoints.map((url) => new URL(url).href))];
     if (!unique.length) throw new Engine2Failure('NO_APPROVED_TRAFFIC', 'Active scanning needs discovered endpoints or an explicitly supplied authorized endpoint');
-    result.policy = selected.name; await job.enterPhase('active', signal); phaseEntered = true;
+    result.policy = selected.name; phaseEntered = true; await job.enterPhase('active', signal);
     const policyName = `engine2-${scope.id}-${selected.name}`;
     await job.client.action('ascan', 'addScanPolicy', { scanPolicyName: policyName, attackStrength: selected.strength, alertThreshold: selected.threshold }, signal);
     await job.client.action('ascan', 'disableAllScanners', { scanPolicyName: policyName }, signal);
@@ -51,16 +51,17 @@ export async function scanActive(job: ZapJob, scope: ApprovedScope, endpoints = 
         catch (stopError) { result.errors.push(scanError('active', stopError)); }
       }
       const raw = await activeAlerts(job, scan.scan, AbortSignal.timeout(job.config.apiTimeoutMs * 3));
+      result.errors.push(...raw.errors);
       const normalized = normalizeAlerts(raw.alerts, scope, 'active');
       const remaining = job.config.maxFindings - result.findings.length;
       result.findings.push(...normalized.findings.slice(0, remaining));
       if (normalized.findings.length > remaining) { result.status = 'partial'; result.limitations.push('Active finding limit reached'); }
       if (raw.truncated || normalized.invalid || normalized.excluded) { result.status = 'partial'; result.limitations.push('Active alerts were truncated, malformed or excluded'); }
-      if (signal.aborted) break;
+      if (signal.aborted || mayBeRunning) break;
     }
     result.limitations.push(`Only installed and explicitly selected ZAP rules (${selected.ruleIds.join(',')}) were used; not all OWASP classes are automatically detectable.`, 'No recursive active scan, browser, OAST or custom exploit payload engine. Passive findings cover the earlier captured traffic.');
     } finally {
-      if (phaseEntered) try { await job.enterPhase('idle', AbortSignal.timeout(job.config.apiTimeoutMs)); } catch { result.limitations.push('Gateway reset failed; close this job before reuse'); result.status = 'partial'; }
+      if (phaseEntered) try { await job.enterPhase('idle', AbortSignal.timeout(job.config.apiTimeoutMs)); } catch (error) { result.errors.push(scanError('active', error)); result.limitations.push('Gateway reset failed; job closed to stop traffic'); result.status = 'partial'; await job.close(); }
       if (mayBeRunning) {
         try { await job.client.action('ascan', 'stopAllScans', {}, AbortSignal.timeout(job.config.apiTimeoutMs)); }
         catch { await job.close(); }
@@ -69,5 +70,6 @@ export async function scanActive(job: ZapJob, scope: ApprovedScope, endpoints = 
   }); } catch (error) {
     result.errors.push(scanError('active', error, signal)); result.status = result.scanIds.length ? 'partial' : error instanceof Engine2Failure ? 'blocked' : signal.aborted ? 'cancelled' : 'failed';
   }
+  result.findings = [...new Map(result.findings.map((finding) => [`${finding.zapPluginId}|${finding.zapAlertId ?? finding.affectedEndpoint}`, finding])).values()];
   result.durationMs = elapsed(start); return result;
 }

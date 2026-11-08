@@ -12,9 +12,9 @@ export async function scanSpider(job: ZapJob, scope: ApprovedScope, parent: Abor
   const result = emptySpider(); const start = performance.now();
   const signal = AbortSignal.any([parent, AbortSignal.timeout(job.config.spiderTimeoutMs)]);
   try { await job.exclusive(signal, async () => {
-    let mayBeRunning = false;
+    let mayBeRunning = false; let phaseEntered = false;
     try {
-    assertJob(job, scope); await job.enterPhase('crawl', signal);
+    assertJob(job, scope); phaseEntered = true; await job.enterPhase('crawl', signal);
     for (const [name, params] of [
       ['setOptionMaxDepth', { Integer: String(job.config.maxDepth) }],
       ['setOptionMaxChildren', { Integer: String(job.config.maxChildren) }],
@@ -47,7 +47,7 @@ export async function scanSpider(job: ZapJob, scope: ApprovedScope, parent: Abor
     if (!endpoints.size) { result.status = 'partial'; result.limitations.push('No approved endpoint was discovered; no complete coverage can be claimed'); }
     result.limitations.push('Traditional ZAP Spider only; no browser or Ajax Spider. Forms and robots/sitemap probes are disabled; GET can still change application state.');
     } finally {
-      try { await job.enterPhase('idle', AbortSignal.timeout(job.config.apiTimeoutMs)); } catch { result.limitations.push('Gateway reset failed; close this job before reuse'); result.status = 'partial'; }
+      if (phaseEntered) try { await job.enterPhase('idle', AbortSignal.timeout(job.config.apiTimeoutMs)); } catch (error) { result.errors.push(scanError('spider', error)); result.limitations.push('Gateway reset failed; job closed to stop traffic'); result.status = 'partial'; await job.close(); }
       if (mayBeRunning) {
         try { await job.client.action('spider', 'stopAllScans', {}, AbortSignal.timeout(job.config.apiTimeoutMs)); }
         catch { await job.close(); }

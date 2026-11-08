@@ -52,3 +52,16 @@ test('missing Docker is a clear optional-backend error, not an unhandled CLI mes
   await assert.rejects(createDockerJobFactory(cfg, async () => { throw new Error('secret daemon detail'); })(await approved('passive', cfg), new AbortController().signal),
     (error: unknown) => error instanceof Error && error.message.includes('unavailable') && !error.message.includes('secret'));
 });
+test('cleanup failures leave the job closed and retry only remaining resources', async () => {
+  const fake = fakeDocker(); let fail = true;
+  const docker: DockerRunner = async (args, options) => {
+    if (args[0] === 'rm' && args[2]!.includes('-zap-') && fail) { fail = false; throw new Error('daemon interruption'); }
+    return fake.docker(args, options);
+  };
+  const cfg = config(); const job = await createDockerJobFactory(cfg, docker)(await approved('passive', cfg), new AbortController().signal);
+  await assert.rejects(job.close(), /cleanup was incomplete/);
+  await assert.rejects(job.exclusive(new AbortController().signal, async () => {}), /already closed/);
+  await job.close();
+  assert.equal(fake.calls.filter((call) => call.args[0] === 'rm').length, 2);
+  assert.equal(fake.calls.filter((call) => call.args[0] === 'volume' && call.args[1] === 'rm').length, 1);
+});

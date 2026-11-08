@@ -20,9 +20,12 @@ export async function approved(mode: 'passive' | 'active' = 'passive', cfg = con
   return approval.scope;
 }
 export async function mockJob(handler: ZapTransport, mode: 'passive' | 'active' = 'passive', cfg = config()): Promise<{ job: ZapJob; calls: ApiRequest[] }> {
-  const scope = await approved(mode, cfg); const calls: ApiRequest[] = []; const lock = new Semaphore(1);
+  return scriptedJob(await approved(mode, cfg), cfg, handler);
+}
+export function scriptedJob(scope: Awaited<ReturnType<typeof approved>>, cfg: Engine2Config, handler: ZapTransport): { job: ZapJob; calls: ApiRequest[] } {
+  const calls: ApiRequest[] = []; const lock = new Semaphore(1);
   const endpoints = new Set<string>();
-  const job: ZapJob = { id: scope.id, scope, contextId: '1', config: cfg,
+  const job: ZapJob = { id: scope.id, scope, contextId: '1', config: cfg, passiveConfigured: false,
     client: new ZapClient(async (req, signal) => { calls.push(req); return handler(req, signal); }, cfg.apiTimeoutMs),
     enterPhase: async () => {}, statistics: async () => ({ forwarded: 1, denied: 0, failures: 0, exhausted: false }),
     exclusive: (signal, run) => lock.run(signal, run), recordEndpoints: (urls) => urls.forEach((url) => endpoints.add(url)), endpoints: () => [...endpoints], close: async () => {},

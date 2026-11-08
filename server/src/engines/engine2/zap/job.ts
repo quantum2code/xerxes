@@ -6,6 +6,7 @@ import type { Engine2Config } from '../types.js';
 export interface GatewayStatistics { forwarded: number; denied: number; failures: number; exhausted: boolean; }
 export interface ZapJob {
   id: string; scope: ApprovedScope; client: ZapClient; contextId: string; config: Engine2Config;
+  passiveConfigured: boolean;
   enterPhase(phase: 'idle' | 'crawl' | 'active', signal: AbortSignal): Promise<void>;
   statistics(signal: AbortSignal): Promise<GatewayStatistics>;
   exclusive<T>(signal: AbortSignal, operation: () => Promise<T>): Promise<T>;
