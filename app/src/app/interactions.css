@@ -1,0 +1,150 @@
+/* Motion Primitives + Base UI, with transitions.dev-inspired interaction timing.
+   Motion is reserved for actions, async state changes, and evidence disclosure. */
+:root {
+  --dim: #a0a494;
+  --interaction-ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.page-intro { padding-top: 32px; }
+.page-intro h1 { margin-top: 0; letter-spacing: -.03em; }
+.page-intro p { max-width: 50ch; }
+.workspace-label { font-family: var(--sans); letter-spacing: 0; font-size: 13px; }
+.input-section h2 { margin-top: 0; }
+.header-note, .site-footer { color: #a0a494; }
+.url-input-wrap input { caret-color: var(--gold); }
+.url-input-wrap input::placeholder { color: #969e8a; }
+.sidebar-bottom p span { color: #a0a494; }
+.normalized-url p { color: #a4ad96; }
+.report-area {
+  container-type: inline-size;
+  container-name: report;
+  scroll-margin-top: 18px;
+}
+.report-area:focus-visible { outline-offset: -3px; border-radius: 10px; }
+.report-toolbar .eyebrow { font-family: var(--sans); font-size: 13px; letter-spacing: 0; }
+.assessment-badge { font-size: 11px; }
+.assessment-content { min-height: 190px; }
+.assessment-content h2 { margin-top: 0; letter-spacing: -.03em; }
+.completed-assessment { min-height: 150px; }
+.completed-assessment > div:first-child { max-width: 68ch; }
+.assessment-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c2c7b5;
+  margin: 0 0 14px;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.assessment-target .mono { min-width: 0; }
+.assessment-stats { font-variant-numeric: tabular-nums; }
+.assessment-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 20px;
+  padding: 0 23px 20px;
+  font-size: 12px;
+  color: #a8af9b;
+  font-variant-numeric: tabular-nums;
+}
+.check-preview-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+  margin: 0;
+  padding: 4px 0 12px;
+  color: #b4bca7;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.url-overview .section-top h2 { font-size: 16px; }
+.normalized-url { background: none; border: 0; padding: 0; }
+.normalized-url > span { font-size: 13px; color: var(--muted); }
+.site-wrap { padding-bottom: 32px; }
+.card-heading { background: transparent; }
+.detector-card { transition: border-color 160ms ease-out; }
+.detector-card:focus-within { border-color: #bea36865; }
+.detector-card.is-preview .detector-body { min-height: 68px; }
+.detector-body p:first-child { margin-top: 0; }
+.detector-card.wide-card.is-preview .detector-body { min-height: 68px; }
+.check-status { color: #a8af9b; }
+.check-status.tone-amber { color: #d1b87e; }
+.detector-footer { color: #a8af9b; }
+.redirect-chain li { align-items: baseline; }
+.redirect-chain li > .mono:not(.http-code) { flex: 1; }
+.redirect-chain .http-code { flex: 0 0 auto; white-space: nowrap; }
+
+/* Tactile, offset top/bottom shadows stay intact. Only the affordance moves. */
+.button {
+  transition: background 150ms ease-out, box-shadow 150ms ease-out,
+    color 150ms ease-out, transform 100ms ease-out;
+}
+.button:not(.button-icon) { min-height: 40px; }
+.button-icon { width: 44px; min-height: 44px; }
+.button.analyze-button { min-height: 46px; }
+.button-primary:focus-visible { outline-color: #e1c58a; }
+.icon-swap { display: inline-flex; width: 16px; height: 16px; flex: 0 0 16px; }
+.icon-swap > div, .icon-swap > div > div { width: 100%; height: 100%; }
+.icon-swap svg { display: block; }
+.analyze-button > .icon-swap { transition: translate 180ms var(--interaction-ease); }
+.copy-action { display: flex; gap: 8px; align-items: center; }
+.copy-caption { font-size: 12px; color: #c6cfb5; }
+.scan-wait { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.wait-label { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; color: #b0b79f; line-height: 1.5; }
+.wait-label .mono { font-variant-numeric: tabular-nums; }
+.scan-wait .button { align-self: flex-start; min-height: 40px; }
+.scan-notice { margin-top: 12px; font-size: 13px; color: #bec7ad; line-height: 1.6; }
+.form-feedback { position: relative; }
+
+/* Base UI owns focus, semantics, mounting and keyboard behavior.
+   The library's measured panel height makes expansion interruption-safe. */
+.evidence-panel {
+  height: var(--accordion-panel-height);
+  overflow: clip;
+  opacity: 1;
+  transition: height 220ms var(--interaction-ease), opacity 160ms ease-out;
+}
+.evidence-panel[data-starting-style],
+.evidence-panel[data-ending-style] { height: 0; opacity: 0; }
+.evidence-trigger { transition: background 140ms ease-out, color 140ms ease-out; }
+.evidence-trigger svg { transition: transform 220ms var(--interaction-ease); }
+.evidence-trigger[data-panel-open] { color: #d8dfcb; }
+
+/* Skeletons appear only while real work is pending, never as fake results. */
+.check-skeleton { display: grid; gap: 8px; padding: 3px 0 15px; }
+.check-skeleton span { height: 8px; width: 70%; border-radius: 3px; background: #3c4133; }
+.check-skeleton span:last-child { width: 45%; background: #30352a; }
+.check-skeleton { animation: evidence-pending 1.5s ease-in-out infinite; }
+@keyframes evidence-pending { 50% { opacity: .5; } }
+
+@media (hover: hover) and (pointer: fine) {
+  .analyze-button:hover:not(:disabled) > .icon-swap { translate: 3px 0; }
+  .detector-card:hover { border-color: #ffffff22; }
+}
+@container report (max-width: 620px) {
+  .detector-grid { grid-template-columns: minmax(0, 1fr); }
+  .wide-card { grid-column: auto; }
+  .assessment-content { position: relative; }
+  .assessment-content > div:first-child { position: relative; z-index: 1; }
+  .inspection-illustration { position: absolute; right: 5px; width: 140px; opacity: .16; pointer-events: none; }
+}
+@media (max-width: 600px) {
+  .page-intro { padding: 24px 0; }
+  .input-section h2 { margin-top: 0; font-size: 20px; }
+  .input-section form { margin-top: 18px; }
+  .page-intro p { font-size: 14px; }
+  .assessment-content { min-height: 185px; }
+  .completed-assessment { min-height: 140px; }
+  .assessment-top .eyebrow, .assessment-badge { font-size: 11px; }
+  .report-toolbar .button { min-height: 44px; }
+  .report-toolbar > div { gap: 6px 10px; }
+  .evidence-content { padding-inline: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .evidence-panel, .evidence-trigger svg, .button, .analyze-button > .icon-swap {
+    transition: none;
+  }
+  .check-skeleton { animation: none; }
+  .analyze-button:hover:not(:disabled) > .icon-swap { translate: none; }
+}
