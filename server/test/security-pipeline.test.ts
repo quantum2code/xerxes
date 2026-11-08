@@ -74,8 +74,8 @@ test('a runner built from the security DAG preserves mock outputs across isolate
 
   assert.deepEqual(first, {
     threatAnalysis: { verdict: 'unknown', score: 0 },
-    securityAssessment: { findings: [] },
-    certificateValidation: { valid: null },
+    securityAssessment: { findings: ['Mock certificate validation failed'] },
+    certificateValidation: { valid: false },
     threatIntelligence: { matches: [] },
   });
   assert.deepEqual(second, first);

@@ -1,6 +1,6 @@
-# Server template
+# Xerxes server
 
-Express + TypeScript. No database, external calls, validation logic, or real analysis—only mock data.
+Express + TypeScript with a DAG execution engine, [Module 1 URL analyzer](docs/url-analysis.md) (URL features, DNS and safe HTTP metadata), and [Module 4 web security scanner](docs/web-security.md). Other analysis modules remain explicit mocks. Both modules provide typed, redacted results rather than a final phishing verdict.
 
 ```sh
 pnpm install
@@ -10,12 +10,14 @@ pnpm dev
 Defaults to port `3000` (override with `PORT`).
 
 - `GET /health`
-- `POST /api/analyze` — accepts JSON and returns the mock task outputs keyed by task name.
+- `POST /api/analyze` — returns task outputs, including independent `webSecurityScan` and separate `securityAssessment` aggregation.
+- `POST /api/web-security/scan` — standalone structured scanner result. Scans require server-provisioned authorization grants by default; unauthorized submissions return blocked without fetching the target.
+- `POST /api/url-analysis` — standalone URL parsing/features, DNS records and SSRF-safe HTTP metadata. Requests can contact the submitted public website; use authorized targets only. See its [configuration and output schema](docs/url-analysis.md).
 
 ```sh
 curl -X POST http://localhost:3000/api/analyze \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com"}'
+  -d '{"url":"https://your-authorized-site.example","authorizationToken":"YOUR_PROVISIONED_SECRET"}'
 ```
 
 ## Structure
@@ -34,13 +36,17 @@ src/
     pipeline-runner.ts       Concurrent execution coordination
 
   pipelines/                 Business-specific pipeline definitions
-    mock-pipeline.ts         Security DAG factory with mock analysis tasks
+    mock-pipeline.ts         Legacy four-task mock DAG, retained for compatibility
+    security-pipeline.ts     Application DAG with independent URL/security analysis
+  modules/url-analysis/      URL parsing, features, DNS and pinned Undici metadata
+  modules/web-security/      Native checks, safe transport, optional isolated ZAP
+  shared/                    Shared IP policy, redaction and concurrency limits
 test/                        DAG engine and security pipeline tests
 ```
 
-## Security pipeline
+## Legacy mock pipeline
 
-Build the security DAG separately from its runner. The factory returns a fresh graph containing four mock tasks; it does not execute them.
+The following describes the retained `pipelines/mock-pipeline.ts` factory, not the application's six-task analysis DAG. The legacy factory returns four mock tasks and does not execute them.
 
 ```mermaid
 flowchart TD
@@ -49,7 +55,7 @@ flowchart TD
   threatAnalysis --> securityAssessment
 ```
 
-`certificateValidation` and `threatIntelligence` can run concurrently. `threatAnalysis` reads the intelligence output, and `securityAssessment` waits for both certificate validation and threat analysis before combining their outputs. Everything is local mock data: the submitted URL is not fetched or analyzed. The mock score is 25 per intelligence match, capped at 100; it is not a real risk score. Default fixtures have no matches and an unknown certificate status, so the API's existing neutral response is unchanged.
+In the legacy factory, `certificateValidation` and `threatIntelligence` can run concurrently. `threatAnalysis` reads intelligence output, and `securityAssessment` waits for certificate validation and threat analysis. These four tasks produce local mock data; their score is not a real risk assessment. The certificate fixture is `false`, so its mock failure finding remains present. The application additionally runs the real web scanner and aggregates its structured status/findings without changing mock scores.
 
 ### Test the mock pipeline
 
@@ -66,22 +72,22 @@ pnpm typecheck
 
 The data-flow test replaces the two root task outputs with an invalid certificate and one mock intelligence match. It checks that downstream tasks produce a score of `25`, a `suspicious` verdict, and two findings.
 
-For an HTTP smoke test, start `pnpm dev`, then run in a second terminal:
+For a no-network HTTP smoke test, start `pnpm dev`, then submit without a grant:
 
 ```sh
 curl --fail-with-body -sS http://localhost:3000/api/analyze \
   -H 'Content-Type: application/json' \
-  -d '{"url":"https://example.com"}'
+  -d '{"url":"http://127.0.0.1"}'
 ```
 
-Expected response (JSON key order may vary):
+Legacy mock-factory output (the application response additionally contains blocked URL/scanner results and their separate `securityAssessment` summaries for the unsafe smoke-test target):
 
 ```json
 {
-  "certificateValidation": { "valid": null },
+  "certificateValidation": { "valid": false },
   "threatIntelligence": { "matches": [] },
   "threatAnalysis": { "verdict": "unknown", "score": 0 },
-  "securityAssessment": { "findings": [] }
+  "securityAssessment": { "findings": ["Mock certificate validation failed"] }
 }
 ```
 
@@ -131,7 +137,7 @@ States begin at `PENDING` and change to `RUNNING`, then `SUCCESS` or `FAILED`. W
 
 Task handlers can inspect per-run states, stored outputs, and original errors through `context.state.getStates()`, `getResult(name)`, and `getErrors()`.
 
-`Executor.execute(task, context, state)` marks the task running, awaits its handler (including any configured retries), and records its output or terminal failure. On terminal failure it rethrows the error after updating state. The runner catches these errors while draining independent work, then rejects the run. There is no persistence or rollback of context mutations. The Express example's response shape is unchanged; pipeline errors propagate to Express.
+`Executor.execute(task, context, state)` marks the task running, awaits its handler (including any configured retries), and records its output or terminal failure. On terminal failure it rethrows the error after updating state. The runner catches these errors while draining independent work, then rejects the run. There is no persistence or rollback of context mutations. Expected scanner failures are structured task results; unexpected pipeline errors propagate to the application's sanitized Express error handler.
 
 ## Automatic retries
 

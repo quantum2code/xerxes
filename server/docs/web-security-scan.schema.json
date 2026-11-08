@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:xerxes:web-security-scan:1.0",
+  "title": "Xerxes Web Security Scan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "targetUrl", "mode", "status", "durationMs", "checksExecuted", "checksSkipped", "counts", "coverageLimitations", "findings", "backend"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "targetUrl": { "type": "string", "description": "Redacted target, or an invalid-URL marker for rejected input" },
+    "mode": { "enum": ["passive", "active"] },
+    "status": { "enum": ["completed", "partial", "blocked", "failed"] },
+    "durationMs": { "type": "integer", "minimum": 0 },
+    "checksExecuted": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
+    "checksSkipped": {
+      "type": "array",
+      "items": {
+        "type": "object", "additionalProperties": false, "required": ["checkId", "reason"],
+        "properties": { "checkId": { "type": "string" }, "reason": { "type": "string" } }
+      }
+    },
+    "counts": {
+      "type": "object", "additionalProperties": false,
+      "required": ["informational", "low", "medium", "high", "critical"],
+      "properties": {
+        "informational": { "type": "integer", "minimum": 0 }, "low": { "type": "integer", "minimum": 0 },
+        "medium": { "type": "integer", "minimum": 0 }, "high": { "type": "integer", "minimum": 0 },
+        "critical": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "coverageLimitations": { "type": "array", "items": { "type": "string" } },
+    "findings": { "type": "array", "maxItems": 500, "items": { "$ref": "#/$defs/finding" } },
+    "backend": {
+      "type": "object", "additionalProperties": false, "required": ["native", "zap"],
+      "properties": {
+        "native": { "const": "available" },
+        "zap": { "enum": ["disabled", "unavailable", "completed", "failed", "blocked"] }
+      }
+    }
+  },
+  "$defs": {
+    "finding": {
+      "type": "object", "additionalProperties": false,
+      "required": ["id", "checkId", "title", "description", "severity", "confidence", "affectedUrl", "evidence", "cwe", "owasp", "cves", "remediation", "source", "detectedAt"],
+      "properties": {
+        "id": { "type": "string", "format": "uuid" },
+        "checkId": { "type": "string", "maxLength": 1024 }, "title": { "type": "string", "maxLength": 1024 },
+        "description": { "type": "string", "maxLength": 1024 },
+        "severity": { "enum": ["informational", "low", "medium", "high", "critical"] },
+        "confidence": { "enum": ["low", "medium", "high"] },
+        "affectedUrl": { "type": "string" },
+        "evidence": {
+          "type": "array", "minItems": 1, "maxItems": 5,
+          "items": {
+            "type": "object", "additionalProperties": false, "required": ["location", "observation"],
+            "properties": { "location": { "type": "string", "maxLength": 1024 }, "observation": { "type": "string", "maxLength": 1024 } }
+          }
+        },
+        "cwe": { "type": "array", "items": { "type": "string", "pattern": "^CWE-[0-9]+$" } },
+        "owasp": { "type": "array", "items": { "type": "string", "pattern": "^A[0-9]{2}:2021$" } },
+        "cves": { "type": "array", "items": { "type": "string", "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$" } },
+        "remediation": { "type": "string", "maxLength": 1024 },
+        "source": { "enum": ["native", "zap"] }, "detectedAt": { "type": "string", "format": "date-time" }
+      }
+    }
+  }
+}
