@@ -25,11 +25,9 @@ export class Task {
     this.dependencies = Object.freeze([...(definition.dependencies ?? [])]);
     this.handler = definition.run;
 
-    //retry implementation
     const maxRetries = definition.retry?.maxRetries ?? 0;
     const initialDelayMs = definition.retry?.initialDelayMs ?? 100;
     const maxDelayMs = definition.retry?.maxDelayMs ?? 30_000;
-    //edge cases handling
     if (!Number.isSafeInteger(maxRetries) || maxRetries < 0) {
       throw new Error('maxRetries must be a non-negative safe integer');
     }

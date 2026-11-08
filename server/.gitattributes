@@ -1,0 +1,3 @@
+# Preserve vendored sources exactly as published, including upstream formatting.
+models/phishing-url/UPSTREAM_MODEL_CARD.md -text -whitespace
+src/modules/threat-detection/brand-impersonation/data/brands.csv -text

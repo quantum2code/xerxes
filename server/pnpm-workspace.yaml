@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # CPU binaries are bundled; do not download optional CUDA binaries at install time.
+  onnxruntime-node: false
