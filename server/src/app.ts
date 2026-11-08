@@ -1,15 +1,16 @@
 import express from 'express';
 import { PipelineRunner } from './pipeline/pipeline-runner.js';
-import { buildSecurityPipeline, type ScannerTask, type UrlAnalysisTask } from './pipelines/security-pipeline.js';
+import { buildSecurityPipeline, type ScannerTask, type UrlAnalysisTask, type Engine2Task } from './pipelines/security-pipeline.js';
 import { loadConfig, WebSecurityScanner } from './modules/web-security/index.js';
 import { createZapBackend } from './modules/web-security/integrations/zap.js';
 import { UrlAnalyzer } from './modules/url-analysis/index.js';
+import { Engine2 } from './engines/engine2/index.js';
 
-export function createApp(options: { scanner?: ScannerTask; urlAnalyzer?: UrlAnalysisTask } = {}) {
+export function createApp(options: { scanner?: ScannerTask; urlAnalyzer?: UrlAnalysisTask; engine2?: Engine2Task } = {}) {
   const config = loadConfig();
   const scanner = options.scanner ?? new WebSecurityScanner(config, { zap: createZapBackend(config) });
   const urlAnalyzer = options.urlAnalyzer ?? new UrlAnalyzer();
-  const dag = buildSecurityPipeline(scanner, urlAnalyzer);
+  const dag = buildSecurityPipeline(scanner, urlAnalyzer, options.engine2 ?? new Engine2());
   const runner = new PipelineRunner(dag);
   const app = express();
   app.disable('x-powered-by');
