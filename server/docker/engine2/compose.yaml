@@ -1,0 +1,42 @@
+name: xerxes-engine2
+services:
+  # Build-only image. The controller creates a separate gateway for each approved job.
+  gateway:
+    profiles: [tools]
+    image: xerxes-engine2-gateway:local
+    build:
+      context: ../..
+      dockerfile: docker/engine2/gateway.Dockerfile
+    network_mode: none
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+
+  # Intentionally vulnerable TEST fixture. Never publish ports or attach other networks.
+  fixture:
+    image: xerxes-engine2-fixture:local
+    build:
+      context: fixture
+    container_name: xerxes-engine2-fixture
+    labels:
+      xerxes.engine2.fixture: 'true'
+    networks: [lab]
+    user: '1000:1000'
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+    cpus: 0.5
+    pids_limit: 32
+    healthcheck:
+      test: [CMD, node, -e, "require('http').get('http://127.0.0.1:8080/app',r=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  lab:
+    name: xerxes-engine2-lab
+    internal: true
+    labels:
+      xerxes.engine2.lab: 'true'
