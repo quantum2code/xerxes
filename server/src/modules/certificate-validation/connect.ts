@@ -17,6 +17,10 @@ export interface PeerCertificate {
   authorized: boolean;
   /** Verification error code from the handshake, e.g. CERT_HAS_EXPIRED. */
   authorizationError?: string;
+  /** Negotiated protocol, for example TLSv1.3. */
+  protocol?: string;
+  /** Negotiated cipher suite: the IANA name when known. */
+  cipher?: string;
 }
 
 export type Connector = (target: TlsTarget, timeoutMs: number) => Promise<PeerCertificate>;
@@ -49,6 +53,9 @@ export const connectTls: Connector = (target, timeoutMs) =>
       port: target.port,
       servername: isIP(target.hostname) ? undefined : target.hostname,
       rejectUnauthorized: false,
+      // Read weak servers instead of failing on them: allow old TLS versions and a relaxed OpenSSL security level. This probe sends no data.
+      minVersion: 'TLSv1',
+      ciphers: tls.DEFAULT_CIPHERS + ':@SECLEVEL=0',
     });
     const finish = (action: () => void) => {
       if (settled) return;
@@ -68,6 +75,8 @@ export const connectTls: Connector = (target, timeoutMs) =>
           chain,
           authorized: socket.authorized,
           authorizationError: errorCode(socket.authorizationError),
+          protocol: socket.getProtocol() ?? undefined,
+          cipher: socket.getCipher()?.standardName ?? socket.getCipher()?.name,
         };
         finish(() => resolve(result));
       } catch (error) {

@@ -1,5 +1,6 @@
 import { X509Certificate } from 'node:crypto';
 import { isIP } from 'node:net';
+import { signatureInfo } from './signature.js';
 
 // Same shape as the shared "signal" used elsewhere in the pipeline: id + severity + message.
 export type Severity = 'info' | 'low' | 'medium' | 'high' | 'critical';
@@ -23,6 +24,7 @@ export interface CertificateDetails {
   selfSigned: boolean;
   subjectAltNames: string[];
   fingerprint256: string;
+  signatureAlgorithm: string | undefined;
 }
 
 export interface CertificateReport {
@@ -76,7 +78,7 @@ export function keyInfo(cert: X509Certificate): { type: string | undefined; bits
 
 /**
  * Deterministic checks on one certificate. No network, no clock (pass `now` to pin it).
- * Not covered yet: signature algorithm (SHA-1), revocation, Certificate Transparency.
+ * Not covered yet: revocation, Certificate Transparency.
  */
 export function evaluateCertificate(cert: X509Certificate, options: EvaluateOptions = {}): CertificateReport {
   const now = options.now ?? new Date();
@@ -87,6 +89,7 @@ export function evaluateCertificate(cert: X509Certificate, options: EvaluateOpti
   const { type, bits } = keyInfo(cert);
   const selfSigned = cert.checkIssued(cert) && cert.verify(cert.publicKey);
   const subjectAltNames = cert.subjectAltName ? cert.subjectAltName.split(', ') : [];
+  const signature = signatureInfo(cert);
 
   const findings: CertificateFinding[] = [];
   const add = (id: string, severity: Severity, message: string) => findings.push({ id, severity, message });
@@ -118,6 +121,9 @@ export function evaluateCertificate(cert: X509Certificate, options: EvaluateOpti
     add('cert.weak_key', 'high', `EC key is only ${bits} bits (minimum ${MIN_EC_BITS})`);
   }
 
+  if (signature?.weak) {
+    add('cert.weak_signature', 'high', 'Certificate is signed with ' + signature.name + ', which browsers no longer trust');
+  }
   if (validityDays > MAX_VALIDITY_DAYS) {
     add('cert.long_validity', 'low', `Certificate is valid for ${validityDays} days (browsers accept at most ${MAX_VALIDITY_DAYS})`);
   }
@@ -139,6 +145,7 @@ export function evaluateCertificate(cert: X509Certificate, options: EvaluateOpti
       selfSigned,
       subjectAltNames,
       fingerprint256: cert.fingerprint256,
+      signatureAlgorithm: signature?.name,
     },
   };
 }

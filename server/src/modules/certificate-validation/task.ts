@@ -3,6 +3,7 @@ import { parseTlsTarget, PolicyError, resolvePublic, systemResolver, type Resolv
 import { connectTls, type Connector } from './connect.js';
 import { categorize } from './categories.js';
 import { evaluateChain, type ChainCertificate } from './chain.js';
+import { evaluateNegotiated } from './negotiated.js';
 import { evaluateCertificate, type CertificateDetails, type CertificateFinding } from './evaluate.js';
 
 export type CertificateStatus = 'ok' | 'skipped' | 'blocked' | 'error';
@@ -18,13 +19,16 @@ export interface CertificateValidationResult {
   /** Every certificate the server presented, with per-certificate facts. */
   chain?: { complete: boolean; certificates: ChainCertificate[] };
   coverageLimitations?: string[];
+  /** Protocol and cipher suite the server picked for this probe. */
+  tls?: { protocol: string; cipher?: string };
 }
 
 export type CertificateTask = (input: unknown) => Promise<CertificateValidationResult>;
 
 export const COVERAGE_LIMITATIONS = [
   'Revocation (CRL/OCSP) is not checked',
-  'Signature algorithm, negotiated TLS version/cipher and Certificate Transparency are not checked',
+  'Certificate Transparency is not checked',
+  'Only the negotiated TLS version and cipher are examined, not every one the server supports',
 ];
 
 export interface CertificateTaskOptions {
@@ -92,7 +96,7 @@ export function createCertificateTask(options: CertificateTaskOptions = {}): Cer
       const chain = peer.chain ? evaluateChain(peer.chain, { now: at, trustError: peer.authorizationError }) : undefined;
       // A precise chain finding replaces the leaf's generic untrusted-chain one for the same handshake error.
       const explained = chain?.findings.some((f) => f.id === 'chain.incomplete' || f.id === 'chain.unknown_issuer');
-      const findings = [...report.findings.filter((f) => !(explained && f.id === 'cert.untrusted_chain')), ...(chain?.findings ?? [])].map(categorize);
+      const findings = [...report.findings.filter((f) => !(explained && f.id === 'cert.untrusted_chain')), ...(chain?.findings ?? []), ...evaluateNegotiated({ protocol: peer.protocol, cipher: peer.cipher })].map(categorize);
       return {
         status: 'ok',
         valid: !findings.some((finding) => finding.severity === 'high' || finding.severity === 'critical'),
@@ -100,6 +104,7 @@ export function createCertificateTask(options: CertificateTaskOptions = {}): Cer
         findings,
         details: report.details,
         ...(chain ? { chain: { complete: chain.complete, certificates: chain.certificates } } : {}),
+        ...(peer.protocol ? { tls: { protocol: peer.protocol, cipher: peer.cipher } } : {}),
         coverageLimitations: [...COVERAGE_LIMITATIONS],
       };
     } catch {

@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { signatureInfo } from './signature.js';
 import { DAY_MS, EXPIRING_SOON_DAYS, keyInfo, MIN_EC_BITS, MIN_RSA_BITS, type CertificateFinding } from './evaluate.js';
 
 export type ChainRole = 'leaf' | 'intermediate' | 'root';
@@ -16,6 +17,7 @@ export interface ChainCertificate {
   isCa: boolean;
   selfSigned: boolean;
   fingerprint256: string;
+  signatureAlgorithm: string | undefined;
 }
 
 export interface ChainReport {
@@ -67,6 +69,7 @@ export function evaluateChain(chain: readonly X509Certificate[], options: ChainO
       isCa: cert.ca,
       selfSigned,
       fingerprint256: cert.fingerprint256,
+      signatureAlgorithm: signatureInfo(cert)?.name,
     };
   });
 
@@ -79,6 +82,10 @@ export function evaluateChain(chain: readonly X509Certificate[], options: ChainO
     else if (info.daysUntilExpiry <= EXPIRING_SOON_DAYS) add('chain.expiring_soon', 'low', `${name} expires in ${info.daysUntilExpiry} day(s)`);
     if (info.keyType === 'rsa' && info.keyBits !== undefined && info.keyBits < MIN_RSA_BITS) add('chain.weak_key', 'high', `${name} has a ${info.keyBits}-bit RSA key`, 'crypto');
     if (info.keyType === 'ec' && info.keyBits !== undefined && info.keyBits < MIN_EC_BITS) add('chain.weak_key', 'high', `${name} has a ${info.keyBits}-bit EC key`, 'crypto');
+    // A self-issued last certificate is a trust anchor: clients never check its own signature.
+    const signature = signatureInfo(cert);
+    const anchor = position === chain.length - 1 && cert.checkIssued(cert);
+    if (signature?.weak && !anchor) add('chain.weak_signature', 'high', name + ' is signed with ' + signature.name + ', which browsers no longer trust', 'crypto');
     if (!cert.ca) add('chain.not_a_ca', 'high', `${name} issues certificates but is not marked as a CA`);
   });
 

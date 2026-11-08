@@ -7,6 +7,7 @@ const BY_ID: Record<string, FindingCategory> = {
   'cert.self_signed': 'chain',
   'cert.untrusted_chain': 'chain',
   'cert.weak_key': 'crypto',
+  'cert.weak_signature': 'crypto',
 };
 
 /** Findings that already carry a category keep it. Everything else defaults to validity. */
