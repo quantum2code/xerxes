@@ -13,6 +13,7 @@ function fakeDocker(unsafe = false) {
     if (args[0] === 'inspect') {
       const zap = args[1]!.includes('-zap-');
       return JSON.stringify([{ HostConfig: { NetworkMode: zap && !unsafe ? 'none' : 'bridge', ReadonlyRootfs: true, Privileged: false, CapDrop: ['ALL'], SecurityOpt: ['no-new-privileges'], PortBindings: null },
+        Config: { User: '1000:1000' },
         NetworkSettings: { Networks: { [zap && !unsafe ? 'none' : 'bridge']: { NetworkID: 'network' } } }, Mounts: [{ Type: 'volume', Name: volume, Destination: '/gateway', RW: !zap }] }]);
     }
     if (args[0] === 'exec' && options?.input?.startsWith('{')) {

@@ -8,10 +8,12 @@ import { checkScope, scopeUrl } from '../scope/rules.js';
 import type { Engine2Config } from '../types.js';
 import type { GatewayStatistics } from './job.js';
 
-export async function createPolicyGateway(policy: GatewayPolicy, config: Engine2Config, options: { forward?: Forwarder; phase?: () => { mode: 'idle' | 'crawl' | 'active'; expiresAt: number } } = {}) {
+export async function createPolicyGateway(policy: GatewayPolicy, config: Engine2Config, options: { forward?: Forwarder; phase?: () => { mode: 'idle' | 'crawl' | 'active'; expiresAt: number }; onStatistics?: (state: GatewayStatistics) => void } = {}) {
   const ca = await createGatewayCa(policy.expiresAt);
   const forward = options.forward ?? createForwarder(policy, config);
-  const stats: GatewayStatistics = { forwarded: 0, denied: 0, failures: 0, exhausted: false };
+  const stats: GatewayStatistics = new Proxy({ forwarded: 0, denied: 0, failures: 0, exhausted: false }, {
+    set(target, key, value) { Reflect.set(target, key, value); options.onStatistics?.(target); return true; },
+  });
   const sockets = new Set<Socket>();
   const tlsServers = new Map<string, Promise<https.Server>>();
   let inFlight = 0; let lastRequest = 0;

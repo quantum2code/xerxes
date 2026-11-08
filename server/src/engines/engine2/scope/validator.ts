@@ -6,6 +6,7 @@ import { requestSchema, type Engine2Config, type Engine2ScanRequest, type ScopeR
 import { Engine2Failure, scanError } from '../errors.js';
 import { checkScope, normalizedRules, scopeUrl } from './rules.js';
 import { verifyAuthorization } from './authorization.js';
+import { resolveAddresses } from '../zap/gateway-transport.js';
 
 export interface LabAttestation { networkId: string; addresses: string[]; hostname: string; }
 export type LabVerifier = () => Promise<LabAttestation>;
@@ -71,7 +72,7 @@ export class ScopeValidator {
           const aborted = () => reject(signal.reason);
           signal.addEventListener('abort', aborted, { once: true });
           if (signal.aborted) aborted();
-          resolvePublic(target, this.resolver).then(() => resolve(), () => reject(new Engine2Failure('NETWORK_BLOCKED', 'DNS did not provide exclusively approved public addresses'))).finally(() => signal.removeEventListener('abort', aborted));
+          resolvePublic(target, this.resolver ?? ((hostname) => resolveAddresses(hostname, signal))).then(() => resolve(), () => reject(new Engine2Failure('NETWORK_BLOCKED', 'DNS did not provide exclusively approved public addresses'))).finally(() => signal.removeEventListener('abort', aborted));
         });
       }
       signal.throwIfAborted();

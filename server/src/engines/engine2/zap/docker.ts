@@ -42,6 +42,7 @@ with urllib.request.urlopen(req,timeout=data['timeout']) as response:
 const hostSchema = z.object({ NetworkMode: z.string(), ReadonlyRootfs: z.literal(true), Privileged: z.literal(false), CapDrop: z.array(z.string()),
   SecurityOpt: z.array(z.string()), PortBindings: z.record(z.string(), z.unknown()).nullable() });
 const inspectionSchema = z.array(z.object({ HostConfig: hostSchema,
+  Config: z.object({ User: z.literal('1000:1000') }),
   NetworkSettings: z.object({ Networks: z.record(z.string(), z.object({ NetworkID: z.string() })) }),
   Mounts: z.array(z.object({ Type: z.string(), Name: z.string().optional(), Destination: z.string(), RW: z.boolean() })) })).length(1);
 const statisticsSchema = z.object({ forwarded: z.number().int().nonnegative(), denied: z.number().int().nonnegative(), failures: z.number().int().nonnegative(), exhausted: z.boolean() });
@@ -73,9 +74,10 @@ export function createDockerJobFactory(config: Engine2Config, docker: DockerRunn
         if (lab.networkId !== scope.lab?.networkId || JSON.stringify(lab.addresses) !== JSON.stringify(scope.lab.addresses) || lab.hostname !== scope.lab.hostname) throw new Engine2Failure('LAB_CHANGED', 'Development network changed since scope approval');
         network = config.labNetwork;
       }
-      await docker(['volume', 'create', '--label', label, volume], { signal }); volumeCreated = true;
+      // tmpfs local volume is owned by the unprivileged workers from the outset: no setuid/chown capabilities.
+      await docker(['volume', 'create', '--label', label, '--driver', 'local', '--opt', 'type=tmpfs', '--opt', 'device=tmpfs', '--opt', 'o=size=16m,uid=1000,gid=1000,mode=0770,nosuid,noexec', volume], { signal }); volumeCreated = true;
       containers.push(gateway);
-      await docker(['run', '-d', '--name', gateway, '--label', label, '--pull', 'never', '--network', network, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '256m', '--cpus', '1', '--pids-limit', '64', '--tmpfs', '/tmp:rw,nosuid,noexec,size=16m',
+      await docker(['run', '-d', '--name', gateway, '--label', label, '--pull', 'never', '--user', '1000:1000', '--network', network, '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '256m', '--cpus', '1', '--pids-limit', '64', '--tmpfs', '/tmp:rw,nosuid,noexec,size=16m',
         '--mount', `type=volume,source=${volume},target=/gateway`, '--health-cmd', 'node -e "process.exit(require(\'fs\').existsSync(\'/gateway/policy.sock\')?0:1)"', '--health-interval', '5s', '--health-timeout', '3s', '--health-retries', '3',
         '-e', `ENGINE2_GATEWAY_POLICY=${JSON.stringify({ rules: scope.rules, mode: scope.request.mode, expiresAt, labAddresses: scope.lab?.addresses ?? [] })}`,
         '-e', `ENGINE2_MAX_REQUESTS=${config.maxRequests}`, '-e', `ENGINE2_MAX_RESPONSE_BYTES=${config.maxResponseBytes}`,
@@ -97,7 +99,7 @@ export function createDockerJobFactory(config: Engine2Config, docker: DockerRunn
       containers.push(zap);
       const bootstrap = 'umask 077; keytool -importcert -noprompt -alias engine2-gateway -file /gateway/ca.pem -keystore /tmp/engine2-trust.p12 -storetype PKCS12 -storepass changeit >/dev/null 2>&1 || exit 1; exec zap.sh "$@"';
       const health = 'python3 -c "import os,urllib.request; urllib.request.urlopen(urllib.request.Request(\'http://127.0.0.1:8090/JSON/core/view/version/\',headers={\'X-ZAP-API-Key\':os.environ[\'ENGINE2_ZAP_API_KEY\']}),timeout=3).read()"';
-      await docker(['run', '-d', '--name', zap, '--label', label, '--pull', 'never', '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '1g', '--cpus', '1', '--pids-limit', '256',
+      await docker(['run', '-d', '--name', zap, '--label', label, '--pull', 'never', '--user', '1000:1000', '--network', 'none', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges', '--memory', '1g', '--cpus', '1', '--pids-limit', '256',
         '--tmpfs', '/tmp:rw,nosuid,size=256m', '--tmpfs', '/home/zap:rw,nosuid,size=512m,uid=1000,gid=1000', '--tmpfs', '/zap/wrk:rw,nosuid,noexec,size=32m,uid=1000,gid=1000',
         '--mount', `type=volume,source=${volume},target=/gateway,readonly`, '--health-cmd', health, '--health-interval', '5s', '--health-timeout', '5s', '--health-start-period', '30s', '--health-retries', '3',
         '-e', `ENGINE2_ZAP_API_KEY=${apiKey}`, '-e', 'JAVA_OPTS=-Xmx512m -Djavax.net.ssl.trustStore=/tmp/engine2-trust.p12 -Djavax.net.ssl.trustStorePassword=changeit',

@@ -12,5 +12,6 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
-# The capability-free entry point binds its volume socket, then drops to UID/GID 1000.
+USER 1000:1000
+# The controller creates a uid=1000 tmpfs volume; this process never needs root or setuid capabilities.
 CMD ["node", "dist/engines/engine2/zap/gateway-worker.js"]

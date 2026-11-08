@@ -15,7 +15,9 @@ export interface ZapJob {
   close(): Promise<void>;
 }
 export type JobFactory = (scope: ApprovedScope, signal: AbortSignal) => Promise<ZapJob>;
-export function assertJob(job: ZapJob, scope: ApprovedScope): void {
-  ApprovedScope.assert(scope);
+export function assertJob(job: ZapJob, scope: ApprovedScope, historicalReadOnly = false): void {
+  if (historicalReadOnly) {
+    if (!(scope instanceof ApprovedScope) || !scope.includes(scope.target).allowed) throw new Engine2Failure('UNAPPROVED_SCOPE', 'Original approved scope capability required for history reads');
+  } else ApprovedScope.assert(scope);
   if (job.scope !== scope || !/^\d+$/.test(job.contextId)) throw new Engine2Failure('JOB_SCOPE_MISMATCH', 'ZAP session does not belong to this approved scope');
 }

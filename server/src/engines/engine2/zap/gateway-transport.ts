@@ -19,7 +19,7 @@ export function addressAllowed(address: string, policy: GatewayPolicy): boolean 
   try { return policy.labAddresses.some((allowed) => ipaddr.process(allowed).toString() === ipaddr.process(address).toString()); }
   catch { return false; }
 }
-const nativeLookup: AddressLookup = async (hostname, signal) => {
+export const resolveAddresses: AddressLookup = async (hostname, signal) => {
   const literal = isIP(hostname);
   if (literal) return [{ address: hostname, family: literal }];
   const resolver = new Resolver({ timeout: 3000, tries: 1 });
@@ -55,7 +55,7 @@ export function pinnedGatewayConnector(url: URL, address: { address: string; fam
     });
   };
 }
-export function createForwarder(policy: GatewayPolicy, config: Engine2Config, lookup: AddressLookup = nativeLookup, send: GatewayRequest = request): Forwarder {
+export function createForwarder(policy: GatewayPolicy, config: Engine2Config, lookup: AddressLookup = resolveAddresses, send: GatewayRequest = request): Forwarder {
   return async (url, method, headers, body, parent) => {
     if (Date.now() >= policy.expiresAt || !checkScope(url, policy.rules).allowed) throw new Engine2Failure('SCOPE_BLOCKED', 'Request outside authorized scope');
     const signal = AbortSignal.any([parent, AbortSignal.timeout(config.requestTimeoutMs)]);
